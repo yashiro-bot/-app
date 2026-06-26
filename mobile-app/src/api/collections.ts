@@ -35,9 +35,16 @@ export interface CollectionBatchResponse {
   errors: Array<{ index: number; clientUuid: string; reason: string }>;
 }
 
-export function createCollection(payload: CollectionInput): Promise<unknown> {
-  // TODO(T18): real call → http.post('/collections', payload)
-  throw new Error('createCollection() not implemented (T18)');
+export function createCollection(
+  payload: CollectionInput,
+): Promise<{ id: number; clientUuid: string }> {
+  // T18: submit a single collection visit with details. The backend
+  // is idempotent on `clientUuid`, so a retry on network failure will
+  // not double-insert. The form layer falls back to OfflineQueue on
+  // any non-2xx response.
+  return http
+    .post<{ id: number; clientUuid: string }>('/collections', payload)
+    .then((res) => res.data);
 }
 
 export function batchUploadCollections(
