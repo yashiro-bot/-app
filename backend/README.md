@@ -8,7 +8,7 @@ Fastify v5 + Prisma + TypeScript REST API for the cigar-collection monorepo.
 - Data: MySQL (production) / SQLite (dev), defined in `prisma/schema.prisma` (T2).
 
 ## Status
-T2 done — 6-table schema + 45-row CigarSpec seed. T3 wires up Fastify routes next. T7 done — `/cigar-specs` CRUD (6 endpoints, soft delete, immutable codes).
+T2 done — 6-table schema + 45-row CigarSpec seed. T3 done — Fastify skeleton + JWT auth + `/health`. T5 done — `/users` CRUD. T7 done — `/cigar-specs` CRUD (6 endpoints, soft delete, immutable codes).
 
 ## Scripts
 | Command              | What it does                                                |
@@ -24,8 +24,8 @@ T2 done — 6-table schema + 45-row CigarSpec seed. T3 wires up Fastify routes n
 ## Layout
 ```
 src/
-  server.ts        # Fastify boot (T1 stub)
-  routes/          # /auth, /customers, /visits, /inventory, ...   (T3+)
+  server.ts        # Fastify boot
+  routes/          # /auth, /users, /cigar-specs, /health, ...
   plugins/         # prisma, jwt, rate-limit, cors                  (T3+)
   services/        # business logic                                 (T5+)
   types/           # shared types                                   (T3+)
@@ -33,9 +33,33 @@ prisma/
   schema.prisma    # 6 models — User, Customer, CigarSpec,
                    #   CustomerAssignment, Collection, CollectionDetail
   seed.ts          # 45 CigarSpec rows (idempotent)
+  seed-admin.ts    # one-off admin/admin123 seed for smoke tests
   migrations/      # SQL migration history
   dev.db           # SQLite file (gitignored)
 ```
+
+## API endpoints
+
+### Health
+- `GET /health` — public; `{ status, timestamp, db }`
+
+### Auth (`src/routes/auth.ts`)
+- `POST /auth/login` — public; body `{username, password}` → `{token, user}`
+- `POST /auth/wx-login` — public; placeholder (T10 will wire WeChat)
+- `GET  /auth/me` — auth required; returns current user
+
+### Users (`src/routes/users.ts`) — T5
+All responses strip `passwordHash`. Roles: `ADMIN`, `MANAGER`. Status: `ACTIVE`, `DISABLED`.
+
+| Method | Path | Auth | Body / Query | Returns |
+| --- | --- | --- | --- | --- |
+| GET    | `/users`            | ADMIN | query: `page`(1), `pageSize`(20), `role?`, `status?`, `search?` | `{data, total, page, pageSize}` |
+| GET    | `/users/:id`        | ADMIN or self | path: `id` | single user |
+| POST   | `/users`            | ADMIN | `{username, password, name, phone?, role, status?}` | 201 + created user |
+| PATCH  | `/users/:id`        | ADMIN (any field) or self (name/phone only) | partial `{name?, phone?, password?, role?, status?}` | updated user |
+| DELETE | `/users/:id`        | ADMIN | soft delete → status=DISABLED; refuses self-delete | disabled user |
+
+Errors: 400 (validation), 401 (no token), 403 (role/ownership), 404 (not found), 409 (duplicate username).
 
 ## Database
 

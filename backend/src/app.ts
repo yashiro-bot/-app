@@ -15,6 +15,7 @@ import { registerJwt } from './lib/jwt.js';
 import { registerHealthRoutes } from './routes/health.js';
 import { registerAuthRoutes } from './routes/auth.js';
 import { registerCigarSpecRoutes } from './routes/cigar-specs.js';
+import { registerUsersRoutes } from './routes/users.js';
 
 export async function buildApp(): Promise<FastifyInstance> {
   const app = Fastify({
@@ -92,6 +93,7 @@ export async function buildApp(): Promise<FastifyInstance> {
   await registerHealthRoutes(app);
   await registerAuthRoutes(app);
   await registerCigarSpecRoutes(app);
+  await registerUsersRoutes(app);
 
   // ─── Centralized error handler ───────────────────────────────────────────
   app.setErrorHandler<FastifyError>((err, _req, reply) => {
