@@ -27,6 +27,12 @@
       }
     },
     {
+      "path": "pages/history/detail",
+      "style": {
+        "navigationBarTitleText": "采集详情"
+      }
+    },
+    {
       "path": "pages/profile/index",
       "style": {
         "navigationBarTitleText": "我的"
