@@ -8,7 +8,7 @@ Fastify v5 + Prisma + TypeScript REST API for the cigar-collection monorepo.
 - Data: MySQL (production) / SQLite (dev), defined in `prisma/schema.prisma` (T2).
 
 ## Status
-T2 done — 6-table schema + 45-row CigarSpec seed. T3 done — Fastify skeleton + JWT auth + `/health`. T5 done — `/users` CRUD. T7 done — `/cigar-specs` CRUD (6 endpoints, soft delete, immutable codes). T6 done — `/customers` CRUD + `/customers/import` xlsx bulk import with AMap geocoding. T8 done — `/assignments` manager↔customer CRUD + batch upsert/delete via composite UNIQUE upsert. T9 done — `/collections` CRUD + Haversine GPS verification (idempotent POST via `clientUuid`). T10 done — `/oss/sts-token` Aliyun OSS STS temporary credentials for mobile direct upload (1 h policy-scoped to `photos/${userId}/*`, plus dev mock endpoint).
+T2 done — 6-table schema + 45-row CigarSpec seed. T3 done — Fastify skeleton + JWT auth + `/health`. T5 done — `/users` CRUD. T7 done — `/cigar-specs` CRUD (6 endpoints, soft delete, immutable codes). T6 done — `/customers` CRUD + `/customers/import` xlsx bulk import with AMap geocoding. T8 done — `/assignments` manager↔customer CRUD + batch upsert/delete via composite UNIQUE upsert. T9 done — `/collections` CRUD + Haversine GPS verification (idempotent POST via `clientUuid`). T10 done — `/oss/sts-token` Aliyun OSS STS temporary credentials for mobile direct upload (1 h policy-scoped to `photos/${userId}/*`, plus dev mock endpoint). T11 done — `POST /collections/batch` bulk upload (1–50 records/batch, per-record idempotency via `clientUuid`, per-record error capture, single `$transaction` for the whole batch).
 
 ## Scripts
 | Command              | What it does                                                |
@@ -28,7 +28,7 @@ src/
   app.ts           # buildApp() — plugin/route wiring
   routes/          # /auth, /users, /cigar-specs, /customers,
                     #   /customers/import, /assignments, /collections,
-                    #   /oss, /health, ...
+                    #   /collections/batch, /oss, /health, ...
   lib/             # prisma singleton, jwt helpers, amap geocoding,
                     #   haversine distance, aliyun oss sts
   middleware/      # auth preHandler (requireAuth, requireRole)
@@ -134,6 +134,30 @@ One row per store visit (`Collection`) + one row per SKU in that visit (`Collect
 - `clientUuid` is the idempotency key. The route does an upfront `findUnique` by `clientUuid`; on hit returns 200 with the existing record. On race (concurrent insert), the unique-constraint catch (P2002) refetches and still returns 200.
 - List view excludes `details` (only `detailsCount`) and excludes `customer.lat/lng` to keep payloads small for the dashboard; `GET /:id` returns everything.
 - Errors: 400 (validation, bad date, unknown cigarSpec), 401, 403 (manager creating on unassigned customer / reading another manager's visit), 404 (customer/collection), 409 not raised (idempotency).
+
+### Collection batch upload (`src/routes/collections.ts`) — T11
+Mobile offline-sync endpoint. The collector visits N stores during the day without a network connection; at end-of-shift the app POSTs every queued visit in one request. Up to 50 records per batch, per-record idempotency via `clientUuid`, per-record error capture — one bad record never aborts the others.
+
+| Method | Path | Auth | Body | Returns |
+| --- | --- | --- | --- | --- |
+| POST   | `/collections/batch`   | auth (manager: must be assigned per record; admin: any customer) | `{records: [{customerId, clientUuid, gpsLat, gpsLng, gpsAccuracy, photoUrls?, collectedAt, details:[{cigarSpecId, salesQty, actualStockLoose, countedStockLoose, actualStockBoxed, countedStockBoxed}]}]}` (1–50 records) | `{inserted: N, skipped: M, errors: [{index, clientUuid, reason}]}` |
+
+#### Per-record flow
+1. **Parse `collectedAt`** — bad date captured in `errors[]` with reason.
+2. **Idempotency pre-check** — one `findMany({clientUuid: {in: [...]}})` covers every record's `clientUuid`. Pre-existing ones go to `skipped`.
+3. **Customer existence** — batched `findMany` over the still-pending records' `customerId`s. Missing customers → `errors[]` with `Customer N not found`.
+4. **Manager assignment** — when caller is `MANAGER`, one `findMany` over `CustomerAssignment` confirms the caller is assigned to each still-pending record's customer. Unassigned → `errors[]` with `You are not assigned to this customer`. `ADMIN` skips this check.
+5. **CigarSpec existence** — one `findMany` over the union of all still-pending records' `cigarSpecId`s. Records whose `details` reference a missing spec → `errors[]` with `CigarSpec(s) not found: <ids>`.
+6. **Bulk insert** — surviving records are inserted in a single `prisma.$transaction` array call (one header + nested details per record, all-or-nothing).
+7. **Race fallback** — if the bulk transaction aborts on P2002 (another concurrent batch just inserted one of the same `clientUuid`s), each surviving record is re-tried individually in its own short transaction. P2002 per record → `skipped`; any other error → `errors[]`.
+8. **Tally** — every remaining `pending` slot is counted as `inserted`; `errors[]` is the union of step 1–5 + step 7 failures.
+
+- `distanceToCustomerM` and `isVerified` are computed per record from the customer's geocoded lat/lng, same as the single POST.
+- `managerId` is always `req.user.sub` — admins create on their own behalf; the body has no `managerId` field.
+- `photoUrls` is JSON-encoded into the existing `TEXT` column; default `[]` when omitted.
+- `1 ≤ records.length ≤ 50` is enforced by the Ajv schema → 400 when outside.
+- Response is always 200 with the per-record counters (no 4xx for partial failure). The single POST and the batch endpoint are independent — replaying the same `clientUuid` through either path is idempotent.
+- Errors: 400 (validation, e.g. empty `records` array), 401, 200 with mixed counters (per-record issues never abort the batch).
 
 ### OSS STS (`src/routes/oss.ts`) — T10
 Temporary credentials for the mobile app to upload collection photos **directly to Aliyun OSS** — no bytes flow through the backend. Each call issues a 1-hour credential pair scoped to a single user's prefix (`photos/${userId}/*`); cross-user writes are blocked at the OSS policy layer, not just by app logic. Both endpoints require a valid Bearer JWT.

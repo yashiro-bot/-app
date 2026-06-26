@@ -1,16 +1,22 @@
 // Collection (visit) record routes.
 //
-//   GET    /collections     — paginated list with filters
-//                             (managerId?, customerId?, fromDate?, toDate?, isVerified?)
-//   GET    /collections/:id — single visit with nested customer/manager/details
-//                             (manager must own OR be ADMIN)
-//   POST   /collections     — create visit + line items in a single transaction.
-//                             `clientUuid` is the mobile app's idempotency key
-//                             — replaying the same payload returns the existing
-//                             record with HTTP 200, never 409. This is what the
-//                             offline-first mobile client relies on when it
-//                             retries after a network failure.
-//   DELETE /collections/:id — ADMIN-only hard delete (cascade to CollectionDetail)
+//   GET    /collections        — paginated list with filters
+//                                (managerId?, customerId?, fromDate?, toDate?, isVerified?)
+//   GET    /collections/:id    — single visit with nested customer/manager/details
+//                                (manager must own OR be ADMIN)
+//   POST   /collections        — create visit + line items in a single transaction.
+//                                `clientUuid` is the mobile app's idempotency key
+//                                — replaying the same payload returns the existing
+//                                record with HTTP 200, never 409. This is what the
+//                                offline-first mobile client relies on when it
+//                                retries after a network failure.
+//   POST   /collections/batch  — bulk upload of up to 50 visits in one request.
+//                                Mobile offline-sync use case: phone collects all
+//                                day, syncs over Wi-Fi at end of shift. Per-record
+//                                idempotency via `clientUuid`; per-record errors
+//                                are captured in `errors[]` and never abort the
+//                                whole batch.
+//   DELETE /collections/:id    — ADMIN-only hard delete (cascade to CollectionDetail)
 //
 // Authorization:
 //   - MANAGER: sees only their own collections. POST is rejected with 403 if
@@ -141,6 +147,88 @@ const createBodySchema = {
           countedStockLoose: { type: 'integer', minimum: 0, maximum: 1_000_000 },
           actualStockBoxed: { type: 'integer', minimum: 0, maximum: 1_000_000 },
           countedStockBoxed: { type: 'integer', minimum: 0, maximum: 1_000_000 },
+        },
+      },
+    },
+  },
+} as const;
+
+// POST /collections/batch body — 1..50 records, same per-record shape as the
+// single POST. Mobile offline-sync sends one big payload at end-of-shift.
+const batchBodySchema = {
+  type: 'object',
+  required: ['records'],
+  additionalProperties: false,
+  properties: {
+    records: {
+      type: 'array',
+      minItems: 1,
+      maxItems: 50,
+      items: {
+        type: 'object',
+        required: [
+          'customerId',
+          'clientUuid',
+          'gpsLat',
+          'gpsLng',
+          'gpsAccuracy',
+          'collectedAt',
+          'details',
+        ],
+        additionalProperties: false,
+        properties: {
+          customerId: { type: 'integer', minimum: 1 },
+          clientUuid: { type: 'string', minLength: 1, maxLength: 128 },
+          gpsLat: { type: 'number', minimum: -90, maximum: 90 },
+          gpsLng: { type: 'number', minimum: -180, maximum: 180 },
+          gpsAccuracy: { type: 'number', minimum: 0, maximum: 100000 },
+          photoUrls: {
+            type: 'array',
+            items: { type: 'string', minLength: 1, maxLength: 1024 },
+            maxItems: 20,
+          },
+          collectedAt: { type: 'string', minLength: 1, maxLength: 64 },
+          details: {
+            type: 'array',
+            minItems: 1,
+            maxItems: 200,
+            items: {
+              type: 'object',
+              required: [
+                'cigarSpecId',
+                'salesQty',
+                'actualStockLoose',
+                'countedStockLoose',
+                'actualStockBoxed',
+                'countedStockBoxed',
+              ],
+              additionalProperties: false,
+              properties: {
+                cigarSpecId: { type: 'integer', minimum: 1 },
+                salesQty: { type: 'integer', minimum: 0, maximum: 1_000_000 },
+                actualStockLoose: {
+                  type: 'integer',
+                  minimum: 0,
+                  maximum: 1_000_000,
+                },
+                countedStockLoose: {
+                  type: 'integer',
+                  minimum: 0,
+                  maximum: 1_000_000,
+                },
+                actualStockBoxed: {
+                  type: 'integer',
+                  minimum: 0,
+                  maximum: 1_000_000,
+                },
+                countedStockBoxed: {
+                  type: 'integer',
+                  minimum: 0,
+                  maximum: 1_000_000,
+                },
+              },
+            },
+          },
         },
       },
     },
@@ -321,6 +409,126 @@ function shapeDetailRow(
       cigarSpec: d.cigarSpec,
     })),
   };
+}
+
+// ─── Batch-insert fallback helper ───────────────────────────────────────────
+
+/**
+ * Type alias for the per-record slot used by /collections/batch. The
+ * discriminated union lives inside the handler closure so this helper just
+ * receives the minimal shape it needs.
+ */
+type BatchSlotInput = {
+  kind: 'pending';
+  index: number;
+  record: {
+    customerId: number;
+    clientUuid: string;
+    gpsLat: number;
+    gpsLng: number;
+    gpsAccuracy: number;
+    photoUrls?: string[];
+    collectedAt: string;
+    details: DetailInput[];
+  };
+  collectedAtDate: Date;
+};
+type BatchSlotOut =
+  | { kind: 'skipped'; index: number; clientUuid: string }
+  | { kind: 'errored'; index: number; clientUuid: string; reason: string };
+
+/**
+ * Per-record insertion fallback used when the bulk $transaction hits a
+ * P2002 race. Each record is created in its own short transaction so a
+ * single conflict doesn't poison the rest of the batch. The `slots` array
+ * is mutated in place: pre-existing clientUuids become `skipped`, fresh
+ * inserts stay `pending`, and any per-record error becomes `errored`.
+ */
+async function insertBatchPerRecord(
+  toInsert: BatchSlotInput[],
+  customerMap: Map<
+    number,
+    { id: number; lat: number | null; lng: number | null }
+  >,
+  callerSub: number,
+  slots: Array<
+    | BatchSlotInput
+    | { kind: 'skipped'; index: number; clientUuid: string }
+    | { kind: 'errored'; index: number; clientUuid: string; reason: string }
+  >,
+): Promise<void> {
+  for (const slot of toInsert) {
+    const customer = customerMap.get(slot.record.customerId);
+    if (customer === undefined) {
+      slots[slot.index] = {
+        kind: 'errored',
+        index: slot.index,
+        clientUuid: slot.record.clientUuid,
+        reason: `Customer ${slot.record.customerId} disappeared mid-transaction`,
+      };
+      continue;
+    }
+    const { distance, isVerified } = resolveVerification(
+      customer.lat,
+      customer.lng,
+      slot.record.gpsLat,
+      slot.record.gpsLng,
+    );
+    try {
+      await prisma.$transaction(async (tx) => {
+        await tx.collection.create({
+          data: {
+            managerId: callerSub,
+            customerId: slot.record.customerId,
+            clientUuid: slot.record.clientUuid,
+            gpsLat: slot.record.gpsLat,
+            gpsLng: slot.record.gpsLng,
+            gpsAccuracy: slot.record.gpsAccuracy,
+            distanceToCustomerM: distance,
+            isVerified,
+            photoUrls: JSON.stringify(slot.record.photoUrls ?? []),
+            collectedAt: slot.collectedAtDate,
+            details: {
+              create: slot.record.details.map((d) => ({
+                cigarSpecId: d.cigarSpecId,
+                salesQty: d.salesQty,
+                actualStockLoose: d.actualStockLoose,
+                countedStockLoose: d.countedStockLoose,
+                actualStockBoxed: d.actualStockBoxed,
+                countedStockBoxed: d.countedStockBoxed,
+              })),
+            },
+          },
+          select: { id: true },
+        });
+      });
+      // Slot stays `pending` so the final tally counts it as `inserted`.
+    } catch (err: unknown) {
+      if (
+        err instanceof Prisma.PrismaClientKnownRequestError &&
+        err.code === 'P2002'
+      ) {
+        slots[slot.index] = {
+          kind: 'skipped',
+          index: slot.index,
+          clientUuid: slot.record.clientUuid,
+        };
+        continue;
+      }
+      const reason =
+        err instanceof Prisma.PrismaClientKnownRequestError
+          ? `database error ${err.code}`
+          : err instanceof Error
+            ? err.message
+            : 'unknown error';
+      slots[slot.index] = {
+        kind: 'errored',
+        index: slot.index,
+        clientUuid: slot.record.clientUuid,
+        reason,
+      };
+    }
+  }
 }
 
 // ─── Route registration ─────────────────────────────────────────────────────
@@ -610,6 +818,311 @@ export async function registerCollectionRoutes(
         }
         throw err;
       }
+    },
+  );
+
+  // ── POST /collections/batch ──────────────────────────────────────────────
+  // Mobile offline-sync upload. Body shape is a list of records, each matching
+  // the single POST /collections body. Per-record flow:
+  //
+  //   1. Parse collectedAt → 400-style reason captured to errors[] on bad date
+  //   2. Idempotency pre-check (one batched findMany by clientUuid) → skipped
+  //   3. Customer existence check (batched findMany) → 404-style error
+  //   4. Manager-only assignment check (batched findMany) → 403-style error
+  //   5. CigarSpec existence check (batched findMany over ALL records' specIds)
+  //   6. Build create ops, run them all inside a single prisma.$transaction
+  //      (array form — Prisma commits all-or-nothing). If a race P2002 aborts
+  //      the whole tx, fall back to per-record creation with try/catch.
+  app.post<{
+    Body: {
+      records: Array<{
+        customerId: number;
+        clientUuid: string;
+        gpsLat: number;
+        gpsLng: number;
+        gpsAccuracy: number;
+        photoUrls?: string[];
+        collectedAt: string;
+        details: DetailInput[];
+      }>;
+    };
+  }>(
+    '/collections/batch',
+    {
+      preHandler: [requireAuth],
+      schema: { body: batchBodySchema },
+    },
+    async (req, reply) => {
+      if (req.user === undefined) {
+        return reply.code(401).send({
+          statusCode: 401,
+          error: 'Unauthorized',
+          message: 'Authentication required',
+        });
+      }
+
+      const callerSub = req.user.sub;
+      const callerRole = req.user.role;
+      const records = req.body.records;
+
+      // ─── Per-record slot tracking ────────────────────────────────────────
+      // Each record starts as `pending`; pre-validation steps transition slots
+      // to `skipped` or `errored`. Surviving pendings are inserted in the
+      // transaction; survivors after that are counted as `inserted`.
+      type PendingSlot = {
+        kind: 'pending';
+        index: number;
+        record: (typeof records)[number];
+        collectedAtDate: Date;
+      };
+      type SkippedSlot = { kind: 'skipped'; index: number; clientUuid: string };
+      type ErroredSlot = {
+        kind: 'errored';
+        index: number;
+        clientUuid: string;
+        reason: string;
+      };
+      type Slot = PendingSlot | SkippedSlot | ErroredSlot;
+
+      const slots: Slot[] = records.map((record, index) => ({
+        kind: 'pending',
+        index,
+        record,
+        collectedAtDate: new Date(0),
+      }));
+
+      // ─── 1. Parse collectedAt per record ─────────────────────────────────
+      for (const slot of slots) {
+        if (slot.kind !== 'pending') continue;
+        const d = new Date(slot.record.collectedAt);
+        if (Number.isNaN(d.getTime())) {
+          slots[slot.index] = {
+            kind: 'errored',
+            index: slot.index,
+            clientUuid: slot.record.clientUuid,
+            reason: `collectedAt is not a valid ISO date: ${slot.record.collectedAt}`,
+          };
+        } else {
+          slot.collectedAtDate = d;
+        }
+      }
+
+      // ─── 2. Idempotency pre-check (single batched findMany) ─────────────
+      const stillPendingAfterDate = slots.filter(
+        (s): s is PendingSlot => s.kind === 'pending',
+      );
+      if (stillPendingAfterDate.length > 0) {
+        const clientUuids = stillPendingAfterDate.map((s) => s.record.clientUuid);
+        const existing = await prisma.collection.findMany({
+          where: { clientUuid: { in: clientUuids } },
+          select: { clientUuid: true },
+        });
+        const existingSet = new Set(existing.map((e) => e.clientUuid));
+        for (const slot of stillPendingAfterDate) {
+          if (existingSet.has(slot.record.clientUuid)) {
+            slots[slot.index] = {
+              kind: 'skipped',
+              index: slot.index,
+              clientUuid: slot.record.clientUuid,
+            };
+          }
+        }
+      }
+
+      // ─── 3. Customer existence (batched) ────────────────────────────────
+      const pendingAfterIdem = slots.filter(
+        (s): s is PendingSlot => s.kind === 'pending',
+      );
+      let customerMap: Map<
+        number,
+        { id: number; lat: number | null; lng: number | null }
+      > = new Map();
+      if (pendingAfterIdem.length > 0) {
+        const customerIds = Array.from(
+          new Set(pendingAfterIdem.map((s) => s.record.customerId)),
+        );
+        const customers = await prisma.customer.findMany({
+          where: { id: { in: customerIds } },
+          select: { id: true, lat: true, lng: true },
+        });
+        customerMap = new Map(
+          customers.map((c) => [c.id, c] as const),
+        );
+        for (const slot of pendingAfterIdem) {
+          if (!customerMap.has(slot.record.customerId)) {
+            slots[slot.index] = {
+              kind: 'errored',
+              index: slot.index,
+              clientUuid: slot.record.clientUuid,
+              reason: `Customer ${slot.record.customerId} not found`,
+            };
+          }
+        }
+      }
+
+      // ─── 4. Manager-only assignment check (batched) ─────────────────────
+      const pendingAfterCustomer = slots.filter(
+        (s): s is PendingSlot => s.kind === 'pending',
+      );
+      if (pendingAfterCustomer.length > 0 && callerRole === 'MANAGER') {
+        const customerIds = Array.from(
+          new Set(pendingAfterCustomer.map((s) => s.record.customerId)),
+        );
+        const links = await prisma.customerAssignment.findMany({
+          where: { managerId: callerSub, customerId: { in: customerIds } },
+          select: { customerId: true },
+        });
+        const assignedSet = new Set<number>(links.map((l) => l.customerId));
+        for (const slot of pendingAfterCustomer) {
+          if (!assignedSet.has(slot.record.customerId)) {
+            slots[slot.index] = {
+              kind: 'errored',
+              index: slot.index,
+              clientUuid: slot.record.clientUuid,
+              reason: 'You are not assigned to this customer',
+            };
+          }
+        }
+      }
+
+      // ─── 5. CigarSpec existence (batched across ALL pending records) ────
+      const pendingAfterAssign = slots.filter(
+        (s): s is PendingSlot => s.kind === 'pending',
+      );
+      if (pendingAfterAssign.length > 0) {
+        const allSpecIds = Array.from(
+          new Set(
+            pendingAfterAssign.flatMap((s) =>
+              s.record.details.map((d) => d.cigarSpecId),
+            ),
+          ),
+        );
+        const existingSpecs = await prisma.cigarSpec.findMany({
+          where: { id: { in: allSpecIds } },
+          select: { id: true },
+        });
+        const specSet = new Set<number>(existingSpecs.map((s) => s.id));
+        for (const slot of pendingAfterAssign) {
+          const missingSpecs = slot.record.details
+            .map((d) => d.cigarSpecId)
+            .filter((id) => !specSet.has(id));
+          if (missingSpecs.length > 0) {
+            slots[slot.index] = {
+              kind: 'errored',
+              index: slot.index,
+              clientUuid: slot.record.clientUuid,
+              reason: `CigarSpec(s) not found: ${missingSpecs.join(', ')}`,
+            };
+          }
+        }
+      }
+
+      // ─── 6. Build create ops, run in one $transaction ────────────────────
+      const toInsert = slots.filter(
+        (s): s is PendingSlot => s.kind === 'pending',
+      );
+
+      if (toInsert.length > 0) {
+        // customerMap already has the lat/lng we need for distance computation.
+        const createOps = toInsert.map((slot) => {
+          const customer = customerMap.get(slot.record.customerId);
+          if (customer === undefined) {
+            // Should be impossible — pre-check above would have errored.
+            throw new Error(
+              `internal: customer ${slot.record.customerId} missing from pre-fetch`,
+            );
+          }
+          const { distance, isVerified } = resolveVerification(
+            customer.lat,
+            customer.lng,
+            slot.record.gpsLat,
+            slot.record.gpsLng,
+          );
+          return prisma.collection.create({
+            data: {
+              managerId: callerSub,
+              customerId: slot.record.customerId,
+              clientUuid: slot.record.clientUuid,
+              gpsLat: slot.record.gpsLat,
+              gpsLng: slot.record.gpsLng,
+              gpsAccuracy: slot.record.gpsAccuracy,
+              distanceToCustomerM: distance,
+              isVerified,
+              photoUrls: JSON.stringify(slot.record.photoUrls ?? []),
+              collectedAt: slot.collectedAtDate,
+              details: {
+                create: slot.record.details.map((d) => ({
+                  cigarSpecId: d.cigarSpecId,
+                  salesQty: d.salesQty,
+                  actualStockLoose: d.actualStockLoose,
+                  countedStockLoose: d.countedStockLoose,
+                  actualStockBoxed: d.actualStockBoxed,
+                  countedStockBoxed: d.countedStockBoxed,
+                })),
+              },
+            },
+            select: { id: true, clientUuid: true },
+          });
+        });
+
+        try {
+          await prisma.$transaction(createOps);
+        } catch (err: unknown) {
+          if (
+            !(err instanceof Prisma.PrismaClientKnownRequestError) ||
+            err.code !== 'P2002'
+          ) {
+            // Non-race error: the whole transaction rolled back, so we
+            // surface one error per record we tried to insert.
+            const reason =
+              err instanceof Prisma.PrismaClientKnownRequestError
+                ? `database error ${err.code}`
+                : err instanceof Error
+                  ? err.message
+                  : 'unknown error';
+            for (const slot of toInsert) {
+              slots[slot.index] = {
+                kind: 'errored',
+                index: slot.index,
+                clientUuid: slot.record.clientUuid,
+                reason,
+              };
+            }
+          } else {
+            // P2002 race: another caller inserted at least one of these
+            // clientUuids between our pre-check and the transaction commit.
+            // The transaction rolled back; retry per-record. Pre-existing
+            // clientUuids surface as `skipped`, fresh ones land as `inserted`,
+            // and any non-P2002 error per-record surfaces in `errors[]`.
+            await insertBatchPerRecord(
+              toInsert,
+              customerMap,
+              callerSub,
+              slots,
+            );
+          }
+        }
+      }
+
+      // ─── 7. Tally the response ──────────────────────────────────────────
+      let inserted = 0;
+      let skipped = 0;
+      const errors: { index: number; clientUuid: string; reason: string }[] = [];
+      for (const slot of slots) {
+        if (slot.kind === 'pending') {
+          inserted += 1;
+        } else if (slot.kind === 'skipped') {
+          skipped += 1;
+        } else {
+          errors.push({
+            index: slot.index,
+            clientUuid: slot.clientUuid,
+            reason: slot.reason,
+          });
+        }
+      }
+
+      return reply.code(200).send({ inserted, skipped, errors });
     },
   );
 
