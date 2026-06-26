@@ -14,6 +14,7 @@ import { config } from './config/index.js';
 import { registerJwt } from './lib/jwt.js';
 import { registerHealthRoutes } from './routes/health.js';
 import { registerAuthRoutes } from './routes/auth.js';
+import { registerCigarSpecRoutes } from './routes/cigar-specs.js';
 
 export async function buildApp(): Promise<FastifyInstance> {
   const app = Fastify({
@@ -26,6 +27,15 @@ export async function buildApp(): Promise<FastifyInstance> {
     trustProxy: config.nodeEnv === 'production' ? 1 : false,
     // Fail fast on unknown routes — better 404s than mysterious 500s.
     disableRequestLogging: false,
+    ajv: {
+      customOptions: {
+        removeAdditional: false,
+        useDefaults: true,
+        coerceTypes: true,
+        allErrors: false,
+        strict: true,
+      },
+    },
   });
 
   // ─── Security headers ────────────────────────────────────────────────────
@@ -81,6 +91,7 @@ export async function buildApp(): Promise<FastifyInstance> {
   // ─── Routes ──────────────────────────────────────────────────────────────
   await registerHealthRoutes(app);
   await registerAuthRoutes(app);
+  await registerCigarSpecRoutes(app);
 
   // ─── Centralized error handler ───────────────────────────────────────────
   app.setErrorHandler<FastifyError>((err, _req, reply) => {

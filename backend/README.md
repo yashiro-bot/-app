@@ -8,7 +8,7 @@ Fastify v5 + Prisma + TypeScript REST API for the cigar-collection monorepo.
 - Data: MySQL (production) / SQLite (dev), defined in `prisma/schema.prisma` (T2).
 
 ## Status
-T2 done — 6-table schema + 45-row CigarSpec seed. T3 wires up Fastify routes next.
+T2 done — 6-table schema + 45-row CigarSpec seed. T3 wires up Fastify routes next. T7 done — `/cigar-specs` CRUD (6 endpoints, soft delete, immutable codes).
 
 ## Scripts
 | Command              | What it does                                                |
