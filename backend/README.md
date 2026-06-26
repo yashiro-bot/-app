@@ -8,7 +8,7 @@ Fastify v5 + Prisma + TypeScript REST API for the cigar-collection monorepo.
 - Data: MySQL (production) / SQLite (dev), defined in `prisma/schema.prisma` (T2).
 
 ## Status
-T2 done — 6-table schema + 45-row CigarSpec seed. T3 done — Fastify skeleton + JWT auth + `/health`. T5 done — `/users` CRUD. T7 done — `/cigar-specs` CRUD (6 endpoints, soft delete, immutable codes). T6 done — `/customers` CRUD + `/customers/import` xlsx bulk import with AMap geocoding.
+T2 done — 6-table schema + 45-row CigarSpec seed. T3 done — Fastify skeleton + JWT auth + `/health`. T5 done — `/users` CRUD. T7 done — `/cigar-specs` CRUD (6 endpoints, soft delete, immutable codes). T6 done — `/customers` CRUD + `/customers/import` xlsx bulk import with AMap geocoding. T8 done — `/assignments` manager↔customer CRUD + batch upsert/delete via composite UNIQUE upsert.
 
 ## Scripts
 | Command              | What it does                                                |
@@ -26,8 +26,8 @@ T2 done — 6-table schema + 45-row CigarSpec seed. T3 done — Fastify skeleton
 src/
   server.ts        # Fastify boot
   app.ts           # buildApp() — plugin/route wiring
-  routes/          # /auth, /users, /cigar-specs, /customers,
-                   #   /customers/import, /health, ...
+routes/          # /auth, /users, /cigar-specs, /customers,
+                    #   /customers/import, /assignments, /health, ...
   lib/             # prisma singleton, jwt helpers, amap geocoding
   middleware/      # auth preHandler (requireAuth, requireRole)
   config/          # typed env loader
@@ -93,6 +93,26 @@ Expected header row (Chinese, exact match required):
 - Multi-sheet workbooks → only the first sheet is processed.
 
 Errors: 400 (no file / wrong extension / parse failure), 401, 403, 500 (unexpected).
+
+### Assignments (`src/routes/assignments.ts`) — T8
+Manager ↔ customer coverage. Backed by `CustomerAssignment` (composite UNIQUE
+on `(managerId, customerId)`). `POST` is idempotent — re-submitting the same
+batch never 4xxs; already-assigned pairs land in `alreadyAssigned`.
+
+| Method | Path | Auth | Body / Query | Returns |
+| --- | --- | --- | --- | --- |
+| GET    | `/assignments`                                | ADMIN | query: `managerId?`, `customerId?`, `page`(1), `pageSize`(50) | `{data: CustomerAssignment[], total, page, pageSize}` — each row nested with `manager:{id,username,name}` and `customer:{id,code,name,address}` |
+| GET    | `/assignments/managers/:managerId/customers`   | auth (manager: own; admin: any) | path: `managerId` | `{data: (Customer & {assignedAt})[], total}` |
+| GET    | `/assignments/customers/:customerId/managers`  | ADMIN | path: `customerId` | `{data: (User & {assignedAt})[], total}` |
+| POST   | `/assignments`                                | ADMIN | `{managerId, customerIds: number[]}` (1–500 unique ints) | `{assigned: N, alreadyAssigned: M, errors: [{customerId, reason}]}` |
+| DELETE | `/assignments/:id`                            | ADMIN | path: `id` | `{id, deleted: true}` |
+| DELETE | `/assignments/batch`                          | ADMIN | `{managerId, customerIds: number[]}` | `{removed: N, notFound: number[], errors: [{customerId, reason}]}` |
+
+- Upsert uses Prisma's composite unique key: `where: { managerId_customerId: { managerId, customerId } }`.
+- `POST` returns 404 up front if the manager or any customerId is missing — no partial writes.
+- `POST` counts a row as `assigned` vs `alreadyAssigned` by comparing `assignedAt` to now (1s threshold). The composite UNIQUE keeps the DB invariant even if the heuristic misfires on slow clocks.
+- `DELETE /batch` is idempotent — missing pairs go into `notFound`, not errors.
+- Errors: 400 (validation), 401, 403 (manager viewing another manager's list), 404 (manager/customer missing), 409 not raised (upsert swallows the duplicate-collision race).
 
 ## Database
 

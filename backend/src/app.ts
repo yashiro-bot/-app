@@ -19,6 +19,7 @@ import { registerCigarSpecRoutes } from './routes/cigar-specs.js';
 import { registerUsersRoutes } from './routes/users.js';
 import { registerCustomerRoutes } from './routes/customers.js';
 import { registerCustomerImportRoutes } from './routes/customers-import.js';
+import { registerAssignmentRoutes } from './routes/assignments.js';
 
 export async function buildApp(): Promise<FastifyInstance> {
   const app = Fastify({
@@ -108,6 +109,7 @@ export async function buildApp(): Promise<FastifyInstance> {
   await registerUsersRoutes(app);
   await registerCustomerRoutes(app);
   await registerCustomerImportRoutes(app);
+  await registerAssignmentRoutes(app);
 
   // ─── Centralized error handler ───────────────────────────────────────────
   app.setErrorHandler<FastifyError>((err, _req, reply) => {
