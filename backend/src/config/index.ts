@@ -52,6 +52,9 @@ export interface AppConfig {
   readonly ossAccessKeySecret: string;
   readonly ossRegion: string;
   readonly ossBucket: string;
+  readonly ossStsRoleArn: string;
+  readonly ossStsAccessKeyId: string;
+  readonly ossStsAccessKeySecret: string;
   readonly logLevel: string;
   readonly nodeEnv: 'development' | 'production' | 'test';
 }
@@ -71,6 +74,9 @@ export const config: AppConfig = {
   ossAccessKeySecret: optionalString('OSS_ACCESS_KEY_SECRET'),
   ossRegion: optionalString('OSS_REGION'),
   ossBucket: optionalString('OSS_BUCKET'),
+  ossStsRoleArn: optionalString('OSS_STS_ROLE_ARN'),
+  ossStsAccessKeyId: optionalString('OSS_STS_ACCESS_KEY_ID'),
+  ossStsAccessKeySecret: optionalString('OSS_STS_ACCESS_KEY_SECRET'),
   logLevel: optionalString('LOG_LEVEL', nodeEnv === 'production' ? 'info' : 'debug'),
   nodeEnv,
 };

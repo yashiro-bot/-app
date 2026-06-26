@@ -8,7 +8,7 @@ Fastify v5 + Prisma + TypeScript REST API for the cigar-collection monorepo.
 - Data: MySQL (production) / SQLite (dev), defined in `prisma/schema.prisma` (T2).
 
 ## Status
-T2 done — 6-table schema + 45-row CigarSpec seed. T3 done — Fastify skeleton + JWT auth + `/health`. T5 done — `/users` CRUD. T7 done — `/cigar-specs` CRUD (6 endpoints, soft delete, immutable codes). T6 done — `/customers` CRUD + `/customers/import` xlsx bulk import with AMap geocoding. T8 done — `/assignments` manager↔customer CRUD + batch upsert/delete via composite UNIQUE upsert. T9 done — `/collections` CRUD + Haversine GPS verification (idempotent POST via `clientUuid`).
+T2 done — 6-table schema + 45-row CigarSpec seed. T3 done — Fastify skeleton + JWT auth + `/health`. T5 done — `/users` CRUD. T7 done — `/cigar-specs` CRUD (6 endpoints, soft delete, immutable codes). T6 done — `/customers` CRUD + `/customers/import` xlsx bulk import with AMap geocoding. T8 done — `/assignments` manager↔customer CRUD + batch upsert/delete via composite UNIQUE upsert. T9 done — `/collections` CRUD + Haversine GPS verification (idempotent POST via `clientUuid`). T10 done — `/oss/sts-token` Aliyun OSS STS temporary credentials for mobile direct upload (1 h policy-scoped to `photos/${userId}/*`, plus dev mock endpoint).
 
 ## Scripts
 | Command              | What it does                                                |
@@ -26,10 +26,11 @@ T2 done — 6-table schema + 45-row CigarSpec seed. T3 done — Fastify skeleton
 src/
   server.ts        # Fastify boot
   app.ts           # buildApp() — plugin/route wiring
-routes/          # /auth, /users, /cigar-specs, /customers,
-                    #   /customers/import, /assignments, /collections, /health, ...
+  routes/          # /auth, /users, /cigar-specs, /customers,
+                    #   /customers/import, /assignments, /collections,
+                    #   /oss, /health, ...
   lib/             # prisma singleton, jwt helpers, amap geocoding,
-                    #   haversine distance
+                    #   haversine distance, aliyun oss sts
   middleware/      # auth preHandler (requireAuth, requireRole)
   config/          # typed env loader
 prisma/
@@ -133,6 +134,38 @@ One row per store visit (`Collection`) + one row per SKU in that visit (`Collect
 - `clientUuid` is the idempotency key. The route does an upfront `findUnique` by `clientUuid`; on hit returns 200 with the existing record. On race (concurrent insert), the unique-constraint catch (P2002) refetches and still returns 200.
 - List view excludes `details` (only `detailsCount`) and excludes `customer.lat/lng` to keep payloads small for the dashboard; `GET /:id` returns everything.
 - Errors: 400 (validation, bad date, unknown cigarSpec), 401, 403 (manager creating on unassigned customer / reading another manager's visit), 404 (customer/collection), 409 not raised (idempotency).
+
+### OSS STS (`src/routes/oss.ts`) — T10
+Temporary credentials for the mobile app to upload collection photos **directly to Aliyun OSS** — no bytes flow through the backend. Each call issues a 1-hour credential pair scoped to a single user's prefix (`photos/${userId}/*`); cross-user writes are blocked at the OSS policy layer, not just by app logic. Both endpoints require a valid Bearer JWT.
+
+| Method | Path | Auth | Body | Returns |
+| --- | --- | --- | --- | --- |
+| POST   | `/oss/sts-token`         | auth | empty | `{accessKeyId, accessKeySecret, securityToken, expiration, bucket, region, uploadPrefix}` — 500 with a clear "OSS STS not configured (...)" message if env vars are missing |
+| POST   | `/oss/sts-token/dev`     | auth (DEV only — 404 when `NODE_ENV=production`) | empty | same shape as the real endpoint, plus `_mock: true`; values are `MOCK_*` placeholders; no STS API call |
+
+#### Required env vars (all optional in code, required at request time)
+| Var | Purpose |
+| --- | --- |
+| `OSS_REGION` | Bucket region id, e.g. `oss-cn-shanghai` |
+| `OSS_BUCKET` | OSS bucket name, e.g. `cigar-photos` |
+| `OSS_STS_ROLE_ARN` | RAM role trusted by STS, format `acs:ram::${accountID}:role/${roleName}` |
+| `OSS_STS_ACCESS_KEY_ID` | Long-lived AccessKeyId used to call `sts:AssumeRole` (NEVER returned to client) |
+| `OSS_STS_ACCESS_KEY_SECRET` | Long-lived secret paired with the above (NEVER returned to client) |
+
+#### Security model
+- **Credentials expire in 1 hour** (Aliyun's hard max for STS — range is 900..3600 s). The mobile app must refresh before expiry; on a 401 from OSS it re-fetches `/oss/sts-token`.
+- **Inline RAM policy** grants ONLY `oss:PutObject` and `oss:GetObject` on the exact prefix `acs:oss:${region}:*:${bucket}/photos/${userId}/*`. No list/delete/admin actions reachable.
+- **Path-prefix binding is server-side.** The user's id comes from `req.user.sub` (the JWT `sub` claim); the request body has no `userId` field. Path traversal is impossible because `userId` is validated as a positive integer (`Number.isInteger` and `> 0`) before it touches the policy.
+- **Long-lived STS keys stay on the server.** The client only ever sees the temporary `accessKeyId/Secret/SecurityToken` triple, which is useless after expiry.
+- **Dev mock is gated on `NODE_ENV !== 'production'`.** Returns 404 in prod so the endpoint can't leak into a real deployment.
+
+#### Mobile-app usage sketch (uni-app)
+1. `POST /oss/sts-token` with `Authorization: Bearer ${jwt}` → `{accessKeyId, accessKeySecret, securityToken, expiration, bucket, region, uploadPrefix}`.
+2. Use those creds with the OSS SDK (e.g. `ali-oss`) initialized at `https://${bucket}.${region}.aliyuncs.com`.
+3. `put(objectKey, filePath)` where `objectKey = uploadPrefix + filename` — typically `uploadPrefix = "photos/${userId}/"` plus a UUID.
+4. Store the returned `photoUrls` strings in the next `POST /collections` payload (already part of the T9 schema's `photoUrls: string[]`).
+
+Errors: 400 (bad userId, should not happen since the JWT guarantees `sub` is a positive int), 401 (no/invalid token), 500 (OSS env vars missing or STS API call failed — message is human-readable so the mobile app can surface it).
 
 ## Database
 
