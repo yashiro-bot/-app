@@ -1,61 +1,61 @@
 {
   "pages": [
     {
-      "path": "pages/login/login",
+      "path": "pages/login/index",
       "style": {
-        "navigationBarTitleText": "登录",
-        "navigationStyle": "custom"
+        "navigationBarTitleText": "登录"
       }
     },
     {
-      "path": "pages/customers/customers",
+      "path": "pages/customers/index",
       "style": {
-        "navigationBarTitleText": "客户"
+        "navigationBarTitleText": "我的客户",
+        "enablePullDownRefresh": true
       }
     },
     {
-      "path": "pages/collect/collect",
+      "path": "pages/collect/index",
       "style": {
-        "navigationBarTitleText": "采集"
+        "navigationBarTitleText": "采集数据"
       }
     },
     {
-      "path": "pages/history/history",
+      "path": "pages/history/index",
       "style": {
-        "navigationBarTitleText": "历史"
+        "navigationBarTitleText": "采集历史",
+        "enablePullDownRefresh": true
       }
     },
     {
-      "path": "pages/profile/profile",
+      "path": "pages/profile/index",
       "style": {
         "navigationBarTitleText": "我的"
       }
     }
   ],
+  "globalStyle": {
+    "navigationBarTextStyle": "white",
+    "navigationBarTitleText": "雪茄采集",
+    "navigationBarBackgroundColor": "#1989fa",
+    "backgroundColor": "#f8f8f8"
+  },
   "tabBar": {
     "color": "#7A7E83",
-    "selectedColor": "#007AFF",
-    "borderStyle": "black",
+    "selectedColor": "#1989fa",
     "backgroundColor": "#FFFFFF",
     "list": [
       {
-        "pagePath": "pages/customers/customers",
+        "pagePath": "pages/customers/index",
         "text": "客户"
       },
       {
-        "pagePath": "pages/history/history",
+        "pagePath": "pages/history/index",
         "text": "历史"
       },
       {
-        "pagePath": "pages/profile/profile",
+        "pagePath": "pages/profile/index",
         "text": "我的"
       }
     ]
-  },
-  "globalStyle": {
-    "navigationBarTextStyle": "black",
-    "navigationBarTitleText": "cigar-collection",
-    "navigationBarBackgroundColor": "#F8F8F8",
-    "backgroundColor": "#F8F8F8"
   }
 }
