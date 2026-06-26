@@ -1,0 +1,580 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="theme-color" content="#7c4a2d">
+    <meta name="description" content="雪茄采集 APP 下载 - 外勤人员 GPS 采集 + 拍照存档">
+    <meta name="format-detection" content="telephone=no">
+    <title>雪茄采集 APP 下载</title>
+    <style>
+        :root {
+            --color-bg: #faf6f1;
+            --color-card: #ffffff;
+            --color-primary: #7c4a2d;
+            --color-primary-hover: #5e3722;
+            --color-text: #2c1810;
+            --color-text-soft: #6b5d52;
+            --color-border: #e8dfd4;
+            --color-android: #3ddc84;
+            --color-android-hover: #2cb869;
+            --color-ios: #007aff;
+            --color-ios-hover: #0062cc;
+            --color-warning-bg: #fff8e6;
+            --color-warning-border: #f0c674;
+            --shadow-card: 0 2px 12px rgba(124, 74, 45, 0.08);
+            --radius: 12px;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", "Helvetica Neue", Helvetica, Arial, sans-serif;
+            background: var(--color-bg);
+            color: var(--color-text);
+            line-height: 1.6;
+            min-height: 100vh;
+            -webkit-font-smoothing: antialiased;
+            -moz-osx-font-smoothing: grayscale;
+        }
+
+        .container {
+            max-width: 480px;
+            margin: 0 auto;
+            padding: 32px 20px 64px;
+        }
+
+        /* Header */
+        .header {
+            text-align: center;
+            margin-bottom: 32px;
+        }
+
+        .logo {
+            width: 72px;
+            height: 72px;
+            margin: 0 auto 16px;
+            background: var(--color-primary);
+            border-radius: 18px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #fff;
+            font-size: 36px;
+            font-weight: 700;
+            box-shadow: var(--shadow-card);
+        }
+
+        .title {
+            font-size: 24px;
+            font-weight: 700;
+            color: var(--color-text);
+            margin-bottom: 6px;
+        }
+
+        .subtitle {
+            font-size: 14px;
+            color: var(--color-text-soft);
+        }
+
+        .version-badge {
+            display: inline-block;
+            margin-top: 8px;
+            padding: 2px 10px;
+            background: var(--color-primary);
+            color: #fff;
+            border-radius: 10px;
+            font-size: 12px;
+            font-weight: 500;
+        }
+
+        /* QR Card */
+        .qr-card {
+            background: var(--color-card);
+            border-radius: var(--radius);
+            padding: 28px 24px;
+            text-align: center;
+            box-shadow: var(--shadow-card);
+            margin-bottom: 24px;
+        }
+
+        .qr-label {
+            font-size: 13px;
+            color: var(--color-text-soft);
+            margin-bottom: 16px;
+        }
+
+        .qr-code {
+            width: 200px;
+            height: 200px;
+            margin: 0 auto;
+            background: #f5f0ea;
+            border: 1px dashed var(--color-border);
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: var(--color-text-soft);
+            font-size: 12px;
+            text-align: center;
+            padding: 12px;
+        }
+
+        /* QR placeholder SVG */
+        .qr-placeholder-svg {
+            display: block;
+            margin: 0 auto 12px;
+        }
+
+        .qr-hint {
+            font-size: 12px;
+            color: var(--color-text-soft);
+            margin-top: 12px;
+            word-break: break-all;
+            line-height: 1.5;
+        }
+
+        /* Buttons */
+        .download-buttons {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 12px;
+            margin-bottom: 24px;
+        }
+
+        .btn {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 18px 12px;
+            border-radius: var(--radius);
+            text-decoration: none;
+            color: #fff;
+            font-weight: 600;
+            font-size: 15px;
+            transition: transform 0.1s ease, box-shadow 0.2s ease;
+            box-shadow: var(--shadow-card);
+            min-height: 80px;
+        }
+
+        .btn:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
+        }
+
+        .btn:active {
+            transform: translateY(0);
+        }
+
+        .btn-android {
+            background: var(--color-android);
+        }
+
+        .btn-android:hover {
+            background: var(--color-android-hover);
+        }
+
+        .btn-ios {
+            background: var(--color-ios);
+        }
+
+        .btn-ios:hover {
+            background: var(--color-ios-hover);
+        }
+
+        .btn-icon {
+            font-size: 22px;
+            margin-bottom: 4px;
+        }
+
+        .btn-meta {
+            font-size: 11px;
+            font-weight: 400;
+            opacity: 0.9;
+            margin-top: 2px;
+        }
+
+        /* Install Instructions */
+        .instructions {
+            background: var(--color-card);
+            border-radius: var(--radius);
+            padding: 20px;
+            margin-bottom: 16px;
+            box-shadow: var(--shadow-card);
+        }
+
+        .instructions h3 {
+            font-size: 15px;
+            font-weight: 700;
+            color: var(--color-text);
+            margin-bottom: 12px;
+            display: flex;
+            align-items: center;
+        }
+
+        .instructions h3::before {
+            content: "";
+            display: inline-block;
+            width: 4px;
+            height: 14px;
+            background: var(--color-primary);
+            margin-right: 8px;
+            border-radius: 2px;
+        }
+
+        .instructions ol {
+            padding-left: 20px;
+            font-size: 13px;
+            color: var(--color-text);
+        }
+
+        .instructions li {
+            margin-bottom: 8px;
+            line-height: 1.6;
+        }
+
+        .instructions li:last-child {
+            margin-bottom: 0;
+        }
+
+        /* Warning */
+        .warning {
+            background: var(--color-warning-bg);
+            border: 1px solid var(--color-warning-border);
+            border-radius: var(--radius);
+            padding: 14px 16px;
+            font-size: 12px;
+            color: #6b5d52;
+            margin-bottom: 24px;
+            line-height: 1.6;
+        }
+
+        .warning strong {
+            color: var(--color-text);
+        }
+
+        /* FAQ */
+        .faq {
+            background: var(--color-card);
+            border-radius: var(--radius);
+            padding: 20px;
+            margin-bottom: 24px;
+            box-shadow: var(--shadow-card);
+        }
+
+        .faq-item {
+            padding: 12px 0;
+            border-bottom: 1px solid var(--color-border);
+        }
+
+        .faq-item:last-child {
+            border-bottom: none;
+            padding-bottom: 0;
+        }
+
+        .faq-item:first-child {
+            padding-top: 0;
+        }
+
+        .faq-q {
+            font-size: 13px;
+            font-weight: 600;
+            color: var(--color-text);
+            margin-bottom: 4px;
+        }
+
+        .faq-a {
+            font-size: 12px;
+            color: var(--color-text-soft);
+            line-height: 1.6;
+        }
+
+        /* Footer */
+        .footer {
+            text-align: center;
+            font-size: 11px;
+            color: var(--color-text-soft);
+            padding: 16px 0;
+        }
+
+        .footer a {
+            color: var(--color-primary);
+            text-decoration: none;
+        }
+
+        /* Desktop adjustments */
+        @media (min-width: 768px) {
+            .container {
+                padding-top: 64px;
+            }
+
+            .title {
+                font-size: 28px;
+            }
+
+            .qr-code {
+                width: 240px;
+                height: 240px;
+            }
+        }
+
+        /* Mobile tap highlight */
+        @media (max-width: 480px) {
+            .download-buttons {
+                grid-template-columns: 1fr;
+            }
+
+            .container {
+                padding: 24px 16px 48px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header class="header">
+            <div class="logo">雪</div>
+            <h1 class="title">雪茄采集 APP</h1>
+            <p class="subtitle">外勤人员 GPS 采集 + 拍照存档</p>
+            <span class="version-badge">v1.0.0</span>
+        </header>
+
+        <!-- QR Code Section -->
+        <section class="qr-card">
+            <p class="qr-label">扫码下载（推荐）</p>
+            <!--
+                QR Code Placeholder
+                ===================
+                部署前请将下方 <svg> 替换为真实二维码：
+                1. 访问 https://api.qrserver.com/v1/create-qr-code/?size=400x400&data=https%3A%2F%2Fcigar.example.com%2Fdownload.html
+                2. 下载二维码图片
+                3. 替换为本地图标: <img src="qr.png" alt="下载二维码" class="qr-code-img">
+                或用 jQuery.qrcode.js 在线生成 SVG QR
+            -->
+            <div class="qr-code">
+                <svg class="qr-placeholder-svg" width="160" height="160" viewBox="0 0 160 160" xmlns="http://www.w3.org/2000/svg">
+                    <rect width="160" height="160" fill="#fff"/>
+                    <!-- 三个定位角 -->
+                    <rect x="8" y="8" width="40" height="40" fill="#2c1810"/>
+                    <rect x="16" y="16" width="24" height="24" fill="#fff"/>
+                    <rect x="22" y="22" width="12" height="12" fill="#2c1810"/>
+                    <rect x="112" y="8" width="40" height="40" fill="#2c1810"/>
+                    <rect x="120" y="16" width="24" height="24" fill="#fff"/>
+                    <rect x="126" y="22" width="12" height="12" fill="#2c1810"/>
+                    <rect x="8" y="112" width="40" height="40" fill="#2c1810"/>
+                    <rect x="16" y="120" width="24" height="24" fill="#fff"/>
+                    <rect x="22" y="126" width="12" height="12" fill="#2c1810"/>
+                    <!-- 随机数据点（模拟二维码纹理） -->
+                    <g fill="#2c1810">
+                        <rect x="56" y="8" width="4" height="4"/>
+                        <rect x="64" y="8" width="4" height="4"/>
+                        <rect x="76" y="8" width="4" height="4"/>
+                        <rect x="88" y="8" width="4" height="4"/>
+                        <rect x="96" y="8" width="4" height="4"/>
+                        <rect x="60" y="16" width="4" height="4"/>
+                        <rect x="72" y="16" width="4" height="4"/>
+                        <rect x="84" y="16" width="4" height="4"/>
+                        <rect x="100" y="16" width="4" height="4"/>
+                        <rect x="56" y="24" width="4" height="4"/>
+                        <rect x="68" y="24" width="4" height="4"/>
+                        <rect x="80" y="24" width="4" height="4"/>
+                        <rect x="92" y="24" width="4" height="4"/>
+                        <rect x="104" y="24" width="4" height="4"/>
+                        <rect x="60" y="32" width="4" height="4"/>
+                        <rect x="72" y="32" width="4" height="4"/>
+                        <rect x="88" y="32" width="4" height="4"/>
+                        <rect x="100" y="32" width="4" height="4"/>
+                        <rect x="64" y="40" width="4" height="4"/>
+                        <rect x="76" y="40" width="4" height="4"/>
+                        <rect x="84" y="40" width="4" height="4"/>
+                        <rect x="96" y="40" width="4" height="4"/>
+                        <rect x="8" y="56" width="4" height="4"/>
+                        <rect x="20" y="56" width="4" height="4"/>
+                        <rect x="32" y="56" width="4" height="4"/>
+                        <rect x="44" y="56" width="4" height="4"/>
+                        <rect x="56" y="56" width="4" height="4"/>
+                        <rect x="68" y="56" width="4" height="4"/>
+                        <rect x="80" y="56" width="4" height="4"/>
+                        <rect x="92" y="56" width="4" height="4"/>
+                        <rect x="104" y="56" width="4" height="4"/>
+                        <rect x="116" y="56" width="4" height="4"/>
+                        <rect x="128" y="56" width="4" height="4"/>
+                        <rect x="140" y="56" width="4" height="4"/>
+                        <rect x="12" y="64" width="4" height="4"/>
+                        <rect x="28" y="64" width="4" height="4"/>
+                        <rect x="40" y="64" width="4" height="4"/>
+                        <rect x="52" y="64" width="4" height="4"/>
+                        <rect x="64" y="64" width="4" height="4"/>
+                        <rect x="76" y="64" width="4" height="4"/>
+                        <rect x="88" y="64" width="4" height="4"/>
+                        <rect x="100" y="64" width="4" height="4"/>
+                        <rect x="112" y="64" width="4" height="4"/>
+                        <rect x="124" y="64" width="4" height="4"/>
+                        <rect x="136" y="64" width="4" height="4"/>
+                        <rect x="148" y="64" width="4" height="4"/>
+                        <rect x="20" y="72" width="4" height="4"/>
+                        <rect x="36" y="72" width="4" height="4"/>
+                        <rect x="48" y="72" width="4" height="4"/>
+                        <rect x="60" y="72" width="4" height="4"/>
+                        <rect x="72" y="72" width="4" height="4"/>
+                        <rect x="84" y="72" width="4" height="4"/>
+                        <rect x="96" y="72" width="4" height="4"/>
+                        <rect x="108" y="72" width="4" height="4"/>
+                        <rect x="120" y="72" width="4" height="4"/>
+                        <rect x="132" y="72" width="4" height="4"/>
+                        <rect x="144" y="72" width="4" height="4"/>
+                        <rect x="8" y="80" width="4" height="4"/>
+                        <rect x="24" y="80" width="4" height="4"/>
+                        <rect x="40" y="80" width="4" height="4"/>
+                        <rect x="56" y="80" width="4" height="4"/>
+                        <rect x="68" y="80" width="4" height="4"/>
+                        <rect x="84" y="80" width="4" height="4"/>
+                        <rect x="96" y="80" width="4" height="4"/>
+                        <rect x="112" y="80" width="4" height="4"/>
+                        <rect x="128" y="80" width="4" height="4"/>
+                        <rect x="144" y="80" width="4" height="4"/>
+                        <rect x="16" y="88" width="4" height="4"/>
+                        <rect x="32" y="88" width="4" height="4"/>
+                        <rect x="48" y="88" width="4" height="4"/>
+                        <rect x="60" y="88" width="4" height="4"/>
+                        <rect x="76" y="88" width="4" height="4"/>
+                        <rect x="92" y="88" width="4" height="4"/>
+                        <rect x="104" y="88" width="4" height="4"/>
+                        <rect x="120" y="88" width="4" height="4"/>
+                        <rect x="136" y="88" width="4" height="4"/>
+                        <rect x="148" y="88" width="4" height="4"/>
+                        <rect x="12" y="96" width="4" height="4"/>
+                        <rect x="28" y="96" width="4" height="4"/>
+                        <rect x="44" y="96" width="4" height="4"/>
+                        <rect x="64" y="96" width="4" height="4"/>
+                        <rect x="80" y="96" width="4" height="4"/>
+                        <rect x="100" y="96" width="4" height="4"/>
+                        <rect x="116" y="96" width="4" height="4"/>
+                        <rect x="132" y="96" width="4" height="4"/>
+                        <rect x="56" y="104" width="4" height="4"/>
+                        <rect x="72" y="104" width="4" height="4"/>
+                        <rect x="88" y="104" width="4" height="4"/>
+                        <rect x="100" y="104" width="4" height="4"/>
+                        <rect x="116" y="104" width="4" height="4"/>
+                        <rect x="132" y="104" width="4" height="4"/>
+                        <rect x="60" y="112" width="4" height="4"/>
+                        <rect x="76" y="112" width="4" height="4"/>
+                        <rect x="92" y="112" width="4" height="4"/>
+                        <rect x="104" y="112" width="4" height="4"/>
+                        <rect x="120" y="112" width="4" height="4"/>
+                        <rect x="144" y="112" width="4" height="4"/>
+                        <rect x="56" y="120" width="4" height="4"/>
+                        <rect x="68" y="120" width="4" height="4"/>
+                        <rect x="84" y="120" width="4" height="4"/>
+                        <rect x="96" y="120" width="4" height="4"/>
+                        <rect x="112" y="120" width="4" height="4"/>
+                        <rect x="128" y="120" width="4" height="4"/>
+                        <rect x="140" y="120" width="4" height="4"/>
+                        <rect x="64" y="128" width="4" height="4"/>
+                        <rect x="80" y="128" width="4" height="4"/>
+                        <rect x="100" y="128" width="4" height="4"/>
+                        <rect x="116" y="128" width="4" height="4"/>
+                        <rect x="132" y="128" width="4" height="4"/>
+                        <rect x="148" y="128" width="4" height="4"/>
+                        <rect x="56" y="136" width="4" height="4"/>
+                        <rect x="72" y="136" width="4" height="4"/>
+                        <rect x="88" y="136" width="4" height="4"/>
+                        <rect x="108" y="136" width="4" height="4"/>
+                        <rect x="124" y="136" width="4" height="4"/>
+                        <rect x="140" y="136" width="4" height="4"/>
+                        <rect x="60" y="144" width="4" height="4"/>
+                        <rect x="76" y="144" width="4" height="4"/>
+                        <rect x="92" y="144" width="4" height="4"/>
+                        <rect x="104" y="144" width="4" height="4"/>
+                        <rect x="120" y="144" width="4" height="4"/>
+                        <rect x="136" y="144" width="4" height="4"/>
+                    </g>
+                </svg>
+                <div style="margin-top: 8px; color: #b09b8a;">二维码占位</div>
+            </div>
+            <p class="qr-hint">
+                用手机相机扫描上方二维码<br>
+                或浏览器打开 <strong style="color: var(--color-primary);">https://cigar.example.com/download.html</strong>
+            </p>
+        </section>
+
+        <!-- Download Buttons -->
+        <div class="download-buttons">
+            <a href="/downloads/cigar-collection-1.0.0.apk" class="btn btn-android" download>
+                <span class="btn-icon">⬇</span>
+                <span>Android 下载</span>
+                <span class="btn-meta">v1.0.0 · 约 18 MB</span>
+            </a>
+            <a href="/downloads/cigar-collection-1.0.0.ipa" class="btn btn-ios" download>
+                <span class="btn-icon">⬇</span>
+                <span>iOS 下载</span>
+                <span class="btn-meta">v1.0.0 · TestFlight</span>
+            </a>
+        </div>
+
+        <!-- Android Install Instructions -->
+        <section class="instructions">
+            <h3>Android 安装步骤</h3>
+            <ol>
+                <li>点击上方「Android 下载」按钮，浏览器开始下载 APK</li>
+                <li>下载完成后从通知栏点击 APK，系统提示「禁止安装来自此来源的应用」</li>
+                <li>进入 <strong>设置 → 应用 → 特殊应用权限 → 安装未知应用</strong>，授权当前浏览器</li>
+                <li>回到下载页重新点击 APK，完成安装</li>
+                <li>首次启动 App 授予「位置」「相机」「存储」权限</li>
+            </ol>
+        </section>
+
+        <!-- iOS Install Instructions -->
+        <section class="instructions">
+            <h3>iOS 安装步骤（TestFlight 灰度）</h3>
+            <ol>
+                <li>App Store 搜索「TestFlight」并安装</li>
+                <li>收到邀请邮件后，点击邮件中的「View in TestFlight」链接</li>
+                <li>TestFlight 内点击「Install」，App 图标出现在桌面</li>
+                <li>若超过 90 天未接受邀请，需联系管理员重新发送</li>
+            </ol>
+        </section>
+
+        <!-- Warning -->
+        <div class="warning">
+            <strong>安全提示：</strong>请仅通过本页面提供的链接下载 App。雪茄采集仅发布在 cigar.example.com 域名下，不通过任何第三方应用商店分发。如遇安装异常，请联系 IT 运维（内线 8001）。
+        </div>
+
+        <!-- FAQ -->
+        <section class="faq">
+            <h3 style="font-size: 15px; font-weight: 700; margin-bottom: 12px; color: var(--color-text); display: flex; align-items: center;">
+                <span style="display: inline-block; width: 4px; height: 14px; background: var(--color-primary); margin-right: 8px; border-radius: 2px;"></span>
+                常见问题
+            </h3>
+            <div class="faq-item">
+                <div class="faq-q">安装时提示「解析包出现问题」</div>
+                <div class="faq-a">通常是下载中断导致 APK 不完整，请重新下载。</div>
+            </div>
+            <div class="faq-item">
+                <div class="faq-q">启动后白屏</div>
+                <div class="faq-a">检查后端 API 地址。在 App 内「我的 → 关于」可查看当前 API endpoint。</div>
+            </div>
+            <div class="faq-item">
+                <div class="faq-q">GPS 一直拿不到</div>
+                <div class="faq-a">检查是否授予「位置」权限，并打开手机 GPS 开关。</div>
+            </div>
+            <div class="faq-item">
+                <div class="faq-q">iOS TestFlight 邀请邮件没收到</div>
+                <div class="faq-a">检查垃圾邮件；超过 90 天邀请失效，需联系管理员重新生成。</div>
+            </div>
+        </section>
+
+        <footer class="footer">
+            <p>© 2026 cigar.example.com · 中国烟草</p>
+            <p style="margin-top: 4px;">
+                <a href="/admin/login">管理员入口</a> · <a href="/privacy.html">隐私政策</a>
+            </p>
+        </footer>
+    </div>
+</body>
+</html>

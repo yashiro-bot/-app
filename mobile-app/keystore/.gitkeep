@@ -1,0 +1,4 @@
+# 保留此目录
+#
+# 真实 keystore 文件（*.jks / *.keystore）严禁提交到 git。
+# 详见 KEYSTORE_INFO.md。

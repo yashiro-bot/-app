@@ -48,6 +48,17 @@ mobile-app/.hbuilderx/
 mobile-app/.hbuilder-cache/
 mobile-app/node_modules/.cache/
 
+# Mobile-app signing keys - 严禁提交 keystore / p12 / mobileprovision
+# 详见 mobile-app/keystore/KEYSTORE_INFO.md
+mobile-app/keystore/*.keystore
+mobile-app/keystore/*.jks
+mobile-app/keystore/*.p12
+mobile-app/keystore/*.key
+mobile-app/keystore/*.zip
+mobile-app/keystore/*-backup*
+!mobile-app/keystore/.gitkeep
+!mobile-app/keystore/KEYSTORE_INFO.md
+
 # Coverage
 coverage/
 .nyc_output/

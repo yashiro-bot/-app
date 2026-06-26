@@ -1,0 +1,76 @@
+{
+    "name": "雪茄采集",
+    "appid": "com.cigar.collection",
+    "description": "雪茄门店客户采集 App - 外勤人员 GPS 采集 + 拍照存档 (H5 + iOS/Android)",
+    "versionName": "1.0.0",
+    "versionCode": "100",
+    "transformPx": false,
+    "vueVersion": "3",
+
+    "_comment_appid": "PLACEHOLDER: 在 HBuilderX 中登录 DCloud 账号后，把 appid 替换为真实的 __UNI__XXXXXX 格式. com.cigar.collection 仅用于参考，正式发布前必须替换。",
+    "_comment_relationship": "本文件为发布版参考配置。uni-app 实际构建时使用 src/manifest.json. 发布前请将 src/manifest.json 中的 appid/versionName/versionCode 同步到本文件。",
+
+    "app-plus": {
+        "usingComponents": true,
+        "nvueStyleCompiler": "uni-app",
+        "compilerVersion": 3,
+        "splashscreen": {
+            "alwaysShowBeforeRender": true,
+            "waiting": true,
+            "autoclose": true,
+            "delay": 0
+        },
+        "modules": {
+            "Camera": {},
+            "Geolocation": {}
+        },
+        "distribute": {
+            "android": {
+                "abiFilters": ["armeabi-v7a", "arm64-v8a"],
+                "permissions": [
+                    "<uses-permission android:name=\"android.permission.INTERNET\"/>",
+                    "<uses-permission android:name=\"android.permission.ACCESS_NETWORK_STATE\"/>",
+                    "<uses-permission android:name=\"android.permission.ACCESS_FINE_LOCATION\"/>",
+                    "<uses-permission android:name=\"android.permission.CAMERA\"/>",
+                    "<uses-permission android:name=\"android.permission.READ_EXTERNAL_STORAGE\"/>",
+                    "<uses-permission android:name=\"android.permission.WRITE_EXTERNAL_STORAGE\"/>"
+                ],
+                "minSdkVersion": 21,
+                "targetSdkVersion": 30,
+                "schemes": ""
+            },
+            "ios": {
+                "privacyDescription": {
+                    "NSLocationWhenInUseUsageDescription": "用于采集零售客户经理市场位置以核实实地采集",
+                    "NSCameraUsageDescription": "用于拍摄零售客户雪茄柜台库存照片，仅作采集证据",
+                    "NSPhotoLibraryUsageDescription": "用于从相册选择雪茄柜台照片"
+                },
+                "idfa": false,
+                "dSYMs": false
+            },
+            "sdkConfigs": {},
+            "icons": {
+                "android": {
+                    "hdpi": "",
+                    "xhdpi": "",
+                    "xxhdpi": "",
+                    "xxxhdpi": ""
+                }
+            }
+        }
+    },
+
+    "quickapp": {},
+
+    "mp-weixin": {
+        "appid": "",
+        "setting": {
+            "urlCheck": false
+        },
+        "usingComponents": true
+    },
+
+    "uniStatistics": {
+        "enable": false
+    }
+}
