@@ -1,0 +1,9 @@
+/* Minimal reset — Element Plus provides its own base styles. */
+html,
+body,
+#app {
+  margin: 0;
+  padding: 0;
+  min-height: 100%;
+  font-family: system-ui, -apple-system, 'Segoe UI', sans-serif;
+}

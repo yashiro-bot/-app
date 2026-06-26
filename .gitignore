@@ -1,0 +1,59 @@
+# Dependencies
+node_modules/
+.pnpm-store/
+
+# Build artifacts
+dist/
+build/
+*.tsbuildinfo
+
+# Env
+.env
+.env.local
+.env.*.local
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Editors
+.vscode/*
+!.vscode/extensions.json
+.idea/
+*.swp
+*.swo
+
+# Backend
+backend/prisma/migrations/dev.db*
+backend/prisma/dev.db*
+backend/prisma/*.db
+backend/prisma/*.db-journal
+backend/uploads/
+backend/storage/
+
+# Admin
+admin/dist/
+admin/dist-ssr/
+
+# Mobile-app
+mobile-app/unpackage/
+mobile-app/.hbuilderx/
+mobile-app/.hbuilder-cache/
+mobile-app/node_modules/.cache/
+
+# Coverage
+coverage/
+.nyc_output/
+
+# Lock files for sub-projects
+# (keep package-lock.json at root; uncomment below if you want to gitignore all locks)
+# **/package-lock.json
+# **/pnpm-lock.yaml
+# **/yarn.lock

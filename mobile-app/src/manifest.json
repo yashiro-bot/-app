@@ -1,0 +1,48 @@
+{
+    "name": "cigar-collection",
+    "appid": "__UNI__CIGAR01",
+    "description": "雪茄门店客户采集 App (H5 + iOS/Android)",
+    "versionName": "0.1.0",
+    "versionCode": "1",
+    "transformPx": false,
+    "vueVersion": "3",
+    "app-plus": {
+        "usingComponents": true,
+        "nvueStyleCompiler": "uni-app",
+        "compilerVersion": 3,
+        "splashscreen": {
+            "alwaysShowBeforeRender": true,
+            "waiting": true,
+            "autoclose": true,
+            "delay": 0
+        },
+        "modules": {},
+        "distribute": {
+            "android": {
+                "permissions": [
+                    "<uses-permission android:name=\"android.permission.INTERNET\"/>",
+                    "<uses-permission android:name=\"android.permission.ACCESS_NETWORK_STATE\"/>",
+                    "<uses-permission android:name=\"android.permission.ACCESS_FINE_LOCATION\"/>",
+                    "<uses-permission android:name=\"android.permission.ACCESS_COARSE_LOCATION\"/>",
+                    "<uses-permission android:name=\"android.permission.CAMERA\"/>",
+                    "<uses-permission android:name=\"android.permission.READ_EXTERNAL_STORAGE\"/>",
+                    "<uses-permission android:name=\"android.permission.WRITE_EXTERNAL_STORAGE\"/>"
+                ],
+                "minSdkVersion": 21,
+                "targetSdkVersion": 30
+            },
+            "ios": {
+                "privacyDescription": {
+                    "NSLocationWhenInUseUsageDescription": "采集客户时需要记录门店位置",
+                    "NSCameraUsageDescription": "拍摄雪茄盒/客户名片用于建档",
+                    "NSPhotoLibraryUsageDescription": "从相册选择雪茄盒/名片照片",
+                    "NSPhotoLibraryAddUsageDescription": "保存采集的雪茄照片到相册"
+                }
+            },
+            "sdkConfigs": {}
+        }
+    },
+    "uniStatistics": {
+        "enable": false
+    }
+}
