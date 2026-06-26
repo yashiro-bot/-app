@@ -1,0 +1,170 @@
+// Prisma schema for cigar-collection backend.
+// 6 models: User, Customer, CigarSpec, CustomerAssignment, Collection, CollectionDetail.
+// Dev: SQLite (file:./dev.db).  Prod: MySQL — flip provider + DATABASE_URL.
+//
+// Naming convention: snake_case @map for every table & column so the generated SQL
+// matches the production MySQL naming without re-mangling.
+//
+// Float (not Decimal) is used for lat/lng because SQLite has no native DECIMAL
+// type; Prisma would fail the migration. For production MySQL we will keep Float
+// (REAL/DOUBLE) — geographic precision is ~1m at 7 decimal digits, and Float
+// gives us more than enough.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// ─── Users ──────────────────────────────────────────────────────────────────
+// Admin / Manager. `username` is the login key; `openid` is the future WeChat
+// login binding (nullable, unique when present).
+enum UserRole {
+  ADMIN
+  MANAGER
+}
+
+enum UserStatus {
+  ACTIVE
+  DISABLED
+}
+
+model User {
+  id           Int       @id @default(autoincrement())
+  username     String    @unique
+  passwordHash String    @map("password_hash")
+  name         String
+  phone        String?
+  openid       String?   @unique
+  role         UserRole  @default(MANAGER)
+  status       UserStatus @default(ACTIVE)
+  createdAt    DateTime  @default(now()) @map("created_at")
+  updatedAt    DateTime  @updatedAt @map("updated_at")
+
+  // relations
+  managedCustomers CustomerAssignment[] @relation("ManagerAssignments")
+  collections      Collection[]        @relation("ManagerCollections")
+
+  @@map("user")
+}
+
+// ─── Customers ──────────────────────────────────────────────────────────────
+// Retail shops / 零售户. `code` is the human-readable business code (e.g.
+// "CUST-0001") and is the natural unique key.
+enum CustomerStatus {
+  ACTIVE
+  DISABLED
+}
+
+model Customer {
+  id        Int            @id @default(autoincrement())
+  code      String         @unique
+  name      String
+  address   String?
+  contact   String?
+  phone     String?
+  lat       Float?
+  lng       Float?
+  status    CustomerStatus @default(ACTIVE)
+  createdAt DateTime       @default(now()) @map("created_at")
+  updatedAt DateTime       @updatedAt @map("updated_at")
+
+  assignments CustomerAssignment[]
+  collections Collection[]
+
+  @@index([code, status])
+  @@map("customer")
+}
+
+// ─── Cigar Specifications ───────────────────────────────────────────────────
+// Catalog of cigar SKUs the collectors record. Fixed 45-row seed in T2; admins
+// can edit codes/names later via the admin SPA.
+enum CigarSpecStatus {
+  ACTIVE
+  DISABLED
+}
+
+model CigarSpec {
+  id          Int             @id @default(autoincrement())
+  code        String          @unique
+  name        String
+  category    String          // 国产雪茄 | 进口雪茄 | 其他 — free-text for now
+  unitPerBox  Int             @default(25) @map("unit_per_box")
+  sortOrder   Int             @default(0) @map("sort_order")
+  status      CigarSpecStatus @default(ACTIVE)
+  createdAt   DateTime        @default(now()) @map("created_at")
+  updatedAt   DateTime        @updatedAt @map("updated_at")
+
+  details CollectionDetail[]
+
+  @@map("cigar_spec")
+}
+
+// ─── Customer ↔ Manager assignment (M:N) ────────────────────────────────────
+// Who is allowed to collect from whom. Composite UNIQUE prevents duplicates.
+model CustomerAssignment {
+  id         Int      @id @default(autoincrement())
+  managerId  Int      @map("manager_id")
+  customerId Int      @map("customer_id")
+  assignedAt DateTime @default(now()) @map("assigned_at")
+
+  manager  User     @relation("ManagerAssignments", fields: [managerId], references: [id], onDelete: Cascade)
+  customer Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+
+  @@unique([managerId, customerId])
+  @@map("customer_assignment")
+}
+
+// ─── Collection (visit header) ───────────────────────────────────────────────
+// One row per store visit. `clientUuid` is the mobile-app's idempotency key
+// so the same batched POST can be retried safely without double-inserts.
+model Collection {
+  id                  Int       @id @default(autoincrement())
+  managerId           Int       @map("manager_id")
+  customerId          Int       @map("customer_id")
+  clientUuid          String    @unique @map("client_uuid")
+  gpsLat              Float?    @map("gps_lat")
+  gpsLng              Float?    @map("gps_lng")
+  gpsAccuracy         Float?    @map("gps_accuracy")
+  distanceToCustomerM Float?    @map("distance_to_customer_m")
+  isVerified          Boolean   @default(false) @map("is_verified")
+  photoUrls           String    @default("[]") @map("photo_urls") // JSON-encoded string[]
+  collectedAt         DateTime  @map("collected_at")
+  syncedAt            DateTime  @default(now()) @map("synced_at")
+  createdAt           DateTime  @default(now()) @map("created_at")
+  updatedAt           DateTime  @updatedAt @map("updated_at")
+
+  manager  User               @relation("ManagerCollections", fields: [managerId], references: [id], onDelete: Cascade)
+  customer Customer          @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  details  CollectionDetail[]
+
+  @@index([managerId, collectedAt])
+  @@index([customerId, collectedAt])
+  @@map("collection")
+}
+
+// ─── Collection line items ──────────────────────────────────────────────────
+// One row per (visit, cigar SKU). The four stock counters let the mobile app
+// report loose vs boxed actual vs counted.
+// UNIQUE(collectionId, cigarSpecId) — one line per SKU per visit.
+model CollectionDetail {
+  id                  Int      @id @default(autoincrement())
+  collectionId        Int      @map("collection_id")
+  cigarSpecId         Int      @map("cigar_spec_id")
+  salesQty            Int      @default(0) @map("sales_qty")
+  actualStockLoose    Int      @default(0) @map("actual_stock_loose")
+  countedStockLoose   Int      @default(0) @map("counted_stock_loose")
+  actualStockBoxed    Int      @default(0) @map("actual_stock_boxed")
+  countedStockBoxed   Int      @default(0) @map("counted_stock_boxed")
+  createdAt           DateTime @default(now()) @map("created_at")
+  updatedAt           DateTime @updatedAt @map("updated_at")
+
+  collection Collection @relation(fields: [collectionId], references: [id], onDelete: Cascade)
+  cigarSpec  CigarSpec  @relation(fields: [cigarSpecId], references: [id], onDelete: Restrict)
+
+  @@unique([collectionId, cigarSpecId])
+  @@map("collection_detail")
+}
