@@ -36,8 +36,9 @@ export const OfflineQueue = {
 
   getAll(): PendingRecord[] {
     const info = storage.info();
+    const fullPrefix = 'cigar:' + PREFIX;
     return info.keys
-      .filter((k) => k.startsWith(PREFIX))
+      .filter((k) => k.startsWith(fullPrefix))
       .map((k) => storage.get<PendingRecord>(k.replace('cigar:', '')))
       .filter((r): r is PendingRecord => r !== null);
   },
@@ -52,7 +53,8 @@ export const OfflineQueue = {
 
   info(): { count: number; bytes: number; limit: number } {
     const info = storage.info();
-    const count = info.keys.filter((k) => k.startsWith(PREFIX)).length;
+    const fullPrefix = 'cigar:' + PREFIX;
+    const count = info.keys.filter((k) => k.startsWith(fullPrefix)).length;
     return { count, bytes: info.currentSize, limit: info.limitSize };
   },
 };
