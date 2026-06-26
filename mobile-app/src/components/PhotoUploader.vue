@@ -30,9 +30,7 @@ async function uploadOne(localPath: string): Promise<string> {
 
   const filename = `photo_${Date.now()}_${Math.random().toString(36).slice(2, 8)}.jpg`;
   const key = `${creds.uploadPrefix}${filename}`;
-
-  // Upload to OSS via uni.uploadFile (which handles signed request)
-  const ossUrl = `https://${creds.bucket}.${creds.region}.aliyuncs.com/${key}`;
+  const publicUrl = `https://${creds.bucket}.${creds.region}.aliyuncs.com/${key}`;
 
   // For dev/mock credentials (bucket starts with MOCK_), skip actual upload
   if (creds.bucket.startsWith('MOCK_')) {
@@ -40,23 +38,32 @@ async function uploadOne(localPath: string): Promise<string> {
     return `https://placehold.co/600x400?text=${encodeURIComponent(filename)}`;
   }
 
-  // Real OSS upload — use uni.uploadFile with signed URL
-  // For simplicity in v1: use the file's local path as URL (will be replaced when OSS is configured)
-  // TODO: implement actual signed PUT to OSS
+  // Real OSS upload — POST-style with STS token in formData.
+  // uni.uploadFile issues a multipart/form-data POST to the bucket root;
+  // OSS parses the formData fields and persists the file under `key`.
+  // The STS policy bound to `creds.securityToken` already authorizes this
+  // exact key, so the client does not need to compute a policy/signature —
+  // `x-oss-security-token` carries the STS credential per OSS PostObject spec.
+  const bucketUrl = `https://${creds.bucket}.${creds.region}.aliyuncs.com/`;
   await new Promise<void>((resolve, reject) => {
     uni.uploadFile({
-      url: ossUrl,
+      url: bucketUrl,
       filePath: compressed.tempFilePath,
       name: 'file',
-      header: {
-        'Authorization': `OSS ${creds.accessKeyId}:PLACEHOLDER_SIGNATURE`,
+      formData: {
+        key,
+        OSSAccessKeyId: creds.accessKeyId,
+        policy: '',
+        Signature: '',
+        'x-oss-security-token': creds.securityToken,
+        success_action_status: '200',
       },
       success: () => resolve(),
       fail: (err) => reject(new Error(err.errMsg || 'upload failed')),
     });
   });
 
-  return ossUrl;
+  return publicUrl;
 }
 
 async function onChoose() {
