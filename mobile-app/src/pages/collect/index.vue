@@ -2,6 +2,7 @@
 import { onLoad } from '@dcloudio/uni-app';
 import { reactive, ref } from 'vue';
 import GpsBadge from '../../components/GpsBadge.vue';
+import PhotoUploader from '../../components/PhotoUploader.vue';
 import { listCigarSpecs, type CigarSpec } from '../../api/cigar-specs';
 import { createCollection, type CollectionInput } from '../../api/collections';
 import { getCurrentLocation, type LocationResult } from '../../utils/location';
@@ -28,6 +29,7 @@ const submitting = ref(false);
 const accuracy = ref<number | null>(null);
 const lastFix = ref<LocationResult | null>(null);
 const gpsError = ref('');
+const photos = ref<string[]>([]);
 
 onLoad((query) => {
   const raw = query?.id;
@@ -108,7 +110,7 @@ function buildOfflineRecord(clientUuid: string) {
     gpsLat: lastFix.value?.latitude ?? 0,
     gpsLng: lastFix.value?.longitude ?? 0,
     gpsAccuracy: lastFix.value?.accuracy ?? 0,
-    photoUrls: [] as string[],
+    photoUrls: photos.value,
     collectedAt: new Date().toISOString(),
     details,
   };
@@ -127,7 +129,7 @@ function buildPostPayload(): CollectionInput {
     collectedAt: new Date().toISOString(),
     gpsLat: lastFix.value?.latitude ?? 0,
     gpsLng: lastFix.value?.longitude ?? 0,
-    photoUrls: [],
+    photoUrls: photos.value,
     details,
   };
 }
@@ -160,6 +162,10 @@ async function onSubmit(): Promise<void> {
   }
   if (specs.value.length === 0) {
     uni.showToast({ title: '规格未加载', icon: 'none' });
+    return;
+  }
+  if (photos.value.length === 0) {
+    uni.showToast({ title: '至少添加 1 张照片', icon: 'none' });
     return;
   }
   submitting.value = true;
@@ -208,6 +214,14 @@ async function onSubmit(): Promise<void> {
         </button>
       </view>
       <view v-if="gpsError" class="error-text">{{ gpsError }}</view>
+    </view>
+
+    <view class="card">
+      <view class="card-title">
+        现场照片
+        <text class="card-subtitle">已添加 {{ photos.length }} 张照片 (至少 1 张必填)</text>
+      </view>
+      <PhotoUploader v-model="photos" :max="9" />
     </view>
 
     <view class="card">
@@ -279,7 +293,7 @@ async function onSubmit(): Promise<void> {
       </button>
       <button
         class="btn-primary"
-        :disabled="submitting"
+        :disabled="submitting || photos.length === 0"
         @click="onSubmit"
       >
         {{ submitting ? '提交中...' : '提交' }}
@@ -313,6 +327,12 @@ async function onSubmit(): Promise<void> {
   font-weight: 600;
   color: #333333;
   margin-bottom: 10px;
+}
+.card-subtitle {
+  font-size: 12px;
+  font-weight: 400;
+  color: #888888;
+  margin-left: 8px;
 }
 .card-row {
   margin-bottom: 8px;
