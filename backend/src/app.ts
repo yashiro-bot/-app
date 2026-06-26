@@ -9,6 +9,7 @@ import fastifyHelmet from '@fastify/helmet';
 import fastifyCors from '@fastify/cors';
 import fastifyRateLimit from '@fastify/rate-limit';
 import fastifyJwt from '@fastify/jwt';
+import fastifyMultipart from '@fastify/multipart';
 
 import { config } from './config/index.js';
 import { registerJwt } from './lib/jwt.js';
@@ -16,6 +17,8 @@ import { registerHealthRoutes } from './routes/health.js';
 import { registerAuthRoutes } from './routes/auth.js';
 import { registerCigarSpecRoutes } from './routes/cigar-specs.js';
 import { registerUsersRoutes } from './routes/users.js';
+import { registerCustomerRoutes } from './routes/customers.js';
+import { registerCustomerImportRoutes } from './routes/customers-import.js';
 
 export async function buildApp(): Promise<FastifyInstance> {
   const app = Fastify({
@@ -68,6 +71,15 @@ export async function buildApp(): Promise<FastifyInstance> {
     allowList: (req) => req.url === '/health',
   });
 
+  // ─── Multipart (customer .xlsx import) ──────────────────────────────────
+  // 10MB cap is more than enough for the customer-import xlsx — even
+  // 100k-row imports of 5-column data stay well under a megabyte.
+  await app.register(fastifyMultipart, {
+    limits: {
+      fileSize: 10 * 1024 * 1024,
+    },
+  });
+
   // ─── JWT ─────────────────────────────────────────────────────────────────
   await app.register(fastifyJwt, {
     secret: config.jwtSecret,
@@ -94,6 +106,8 @@ export async function buildApp(): Promise<FastifyInstance> {
   await registerAuthRoutes(app);
   await registerCigarSpecRoutes(app);
   await registerUsersRoutes(app);
+  await registerCustomerRoutes(app);
+  await registerCustomerImportRoutes(app);
 
   // ─── Centralized error handler ───────────────────────────────────────────
   app.setErrorHandler<FastifyError>((err, _req, reply) => {

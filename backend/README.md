@@ -8,7 +8,7 @@ Fastify v5 + Prisma + TypeScript REST API for the cigar-collection monorepo.
 - Data: MySQL (production) / SQLite (dev), defined in `prisma/schema.prisma` (T2).
 
 ## Status
-T2 done — 6-table schema + 45-row CigarSpec seed. T3 done — Fastify skeleton + JWT auth + `/health`. T5 done — `/users` CRUD. T7 done — `/cigar-specs` CRUD (6 endpoints, soft delete, immutable codes).
+T2 done — 6-table schema + 45-row CigarSpec seed. T3 done — Fastify skeleton + JWT auth + `/health`. T5 done — `/users` CRUD. T7 done — `/cigar-specs` CRUD (6 endpoints, soft delete, immutable codes). T6 done — `/customers` CRUD + `/customers/import` xlsx bulk import with AMap geocoding.
 
 ## Scripts
 | Command              | What it does                                                |
@@ -25,10 +25,12 @@ T2 done — 6-table schema + 45-row CigarSpec seed. T3 done — Fastify skeleton
 ```
 src/
   server.ts        # Fastify boot
-  routes/          # /auth, /users, /cigar-specs, /health, ...
-  plugins/         # prisma, jwt, rate-limit, cors                  (T3+)
-  services/        # business logic                                 (T5+)
-  types/           # shared types                                   (T3+)
+  app.ts           # buildApp() — plugin/route wiring
+  routes/          # /auth, /users, /cigar-specs, /customers,
+                   #   /customers/import, /health, ...
+  lib/             # prisma singleton, jwt helpers, amap geocoding
+  middleware/      # auth preHandler (requireAuth, requireRole)
+  config/          # typed env loader
 prisma/
   schema.prisma    # 6 models — User, Customer, CigarSpec,
                    #   CustomerAssignment, Collection, CollectionDetail
@@ -59,7 +61,38 @@ All responses strip `passwordHash`. Roles: `ADMIN`, `MANAGER`. Status: `ACTIVE`,
 | PATCH  | `/users/:id`        | ADMIN (any field) or self (name/phone only) | partial `{name?, phone?, password?, role?, status?}` | updated user |
 | DELETE | `/users/:id`        | ADMIN | soft delete → status=DISABLED; refuses self-delete | disabled user |
 
-Errors: 400 (validation), 401 (no token), 403 (role/ownership), 404 (not found), 409 (duplicate username).
+### Customers (`src/routes/customers.ts`) — T6
+Customer (零售户) records. `code` is the natural unique business key.
+MANAGER role is scoped to customers they're assigned to via `CustomerAssignment`;
+ADMIN sees all customers. Geocoding runs through `lib/amap.ts` (LRU cache, 1000 entries).
+
+| Method | Path | Auth | Body / Query | Returns |
+| --- | --- | --- | --- | --- |
+| GET    | `/customers`           | auth | query: `page`(1), `pageSize`(20), `status?`, `search?` (LIKE on code/name/address) | `{data, total, page, pageSize}` |
+| GET    | `/customers/:id`       | auth (assigned manager or ADMIN) | path: `id` | single customer |
+| POST   | `/customers`           | ADMIN | `{code, name, address?, contact?, phone?, lat?, lng?, status?}` — auto-geocodes `address` if no lat/lng | 201 + created customer |
+| PATCH  | `/customers/:id`       | ADMIN | partial `{name?, address?, contact?, phone?, lat?, lng?, status?}` — re-geocodes on address change | updated customer |
+| DELETE | `/customers/:id`       | ADMIN | soft delete → status=DISABLED (idempotent) | disabled customer |
+
+Errors: 400 (validation/no-op patch), 401 (no token), 403 (role/assignment), 404 (not found), 409 (duplicate code).
+
+### Customer bulk import (`src/routes/customers-import.ts`) — T6
+Streams an `.xlsx` upload through ExcelJS and upserts customers by `code`.
+No full-file buffering — uploads up to 10 MB.
+
+| Method | Path | Auth | Body | Returns |
+| --- | --- | --- | --- | --- |
+| POST   | `/customers/import`    | ADMIN | multipart/form-data, file field `file` (.xlsx) | `{total, imported, updated, skipped, geocoded, errors:[{row,reason}]}` |
+
+Expected header row (Chinese, exact match required):
+`客户编码  客户名称  地址  联系电话  联系人`
+
+- Missing `code` or `name` → row skipped, recorded in `errors`.
+- Address + no cached lat/lng → AMap geocoding attempted (cache hit on repeat imports).
+- Empty rows → counted in `skipped`, not surfaced as errors.
+- Multi-sheet workbooks → only the first sheet is processed.
+
+Errors: 400 (no file / wrong extension / parse failure), 401, 403, 500 (unexpected).
 
 ## Database
 
