@@ -1,48 +1,43 @@
-// Customers API. Real implementation lands in T16.
+// Customers API.
 //
 // Endpoints (backend reference: backend/src/routes/customers.ts):
-//   GET    /customers         — paginated list (MANAGER: assigned only, ADMIN: all)
-//   GET    /customers/:id     — single customer
-//   POST   /customers         — create (ADMIN)
-//   PATCH  /customers/:id     — partial update (ADMIN)
-//   DELETE /customers/:id     — soft delete (ADMIN)
+//   GET  /customers         — paginated list (MANAGER: assigned only, ADMIN: all)
+//   GET  /customers/:id     — single customer + assignments
+//
+// Admin/manager scoping is enforced server-side; we just pass the token.
 
 import { http } from '../utils/request';
-
-export type CustomerStatus = 'ACTIVE' | 'DISABLED';
 
 export interface Customer {
   id: number;
   code: string;
   name: string;
-  address?: string | null;
-  contact?: string | null;
-  phone?: string | null;
-  lat?: number | null;
-  lng?: number | null;
-  status: CustomerStatus;
+  address: string | null;
+  contact: string | null;
+  phone: string | null;
+  lat: number | null;
+  lng: number | null;
+  status: 'ACTIVE' | 'DISABLED';
 }
 
-export interface CustomerListQuery {
-  page?: number;
-  pageSize?: number;
-  status?: CustomerStatus;
-  search?: string;
-}
-
-export interface CustomerListResponse {
+export interface PaginatedCustomers {
+  data: Customer[];
   total: number;
   page: number;
   pageSize: number;
-  items: Customer[];
 }
 
-export function listCustomers(q: CustomerListQuery = {}): Promise<CustomerListResponse> {
-  // TODO(T16): real call → http.get<CustomerListResponse>('/customers', { params: q })
-  throw new Error('listCustomers() not implemented (T16)');
+export async function listCustomers(params?: {
+  page?: number;
+  pageSize?: number;
+  search?: string;
+  status?: string;
+}): Promise<PaginatedCustomers> {
+  const res = await http.get('/customers', { params });
+  return res.data;
 }
 
-export function getCustomer(id: number): Promise<Customer> {
-  // TODO(T16): real call → http.get<Customer>(`/customers/${id}`)
-  throw new Error('getCustomer() not implemented (T16)');
+export async function getCustomer(id: number): Promise<Customer & { assignments: any[] }> {
+  const res = await http.get(`/customers/${id}`);
+  return res.data;
 }
