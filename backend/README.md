@@ -8,7 +8,7 @@ Fastify v5 + Prisma + TypeScript REST API for the cigar-collection monorepo.
 - Data: MySQL (production) / SQLite (dev), defined in `prisma/schema.prisma` (T2).
 
 ## Status
-T2 done — 6-table schema + 45-row CigarSpec seed. T3 done — Fastify skeleton + JWT auth + `/health`. T5 done — `/users` CRUD. T7 done — `/cigar-specs` CRUD (6 endpoints, soft delete, immutable codes). T6 done — `/customers` CRUD + `/customers/import` xlsx bulk import with AMap geocoding. T8 done — `/assignments` manager↔customer CRUD + batch upsert/delete via composite UNIQUE upsert.
+T2 done — 6-table schema + 45-row CigarSpec seed. T3 done — Fastify skeleton + JWT auth + `/health`. T5 done — `/users` CRUD. T7 done — `/cigar-specs` CRUD (6 endpoints, soft delete, immutable codes). T6 done — `/customers` CRUD + `/customers/import` xlsx bulk import with AMap geocoding. T8 done — `/assignments` manager↔customer CRUD + batch upsert/delete via composite UNIQUE upsert. T9 done — `/collections` CRUD + Haversine GPS verification (idempotent POST via `clientUuid`).
 
 ## Scripts
 | Command              | What it does                                                |
@@ -27,8 +27,9 @@ src/
   server.ts        # Fastify boot
   app.ts           # buildApp() — plugin/route wiring
 routes/          # /auth, /users, /cigar-specs, /customers,
-                    #   /customers/import, /assignments, /health, ...
-  lib/             # prisma singleton, jwt helpers, amap geocoding
+                    #   /customers/import, /assignments, /collections, /health, ...
+  lib/             # prisma singleton, jwt helpers, amap geocoding,
+                    #   haversine distance
   middleware/      # auth preHandler (requireAuth, requireRole)
   config/          # typed env loader
 prisma/
@@ -113,6 +114,25 @@ batch never 4xxs; already-assigned pairs land in `alreadyAssigned`.
 - `POST` counts a row as `assigned` vs `alreadyAssigned` by comparing `assignedAt` to now (1s threshold). The composite UNIQUE keeps the DB invariant even if the heuristic misfires on slow clocks.
 - `DELETE /batch` is idempotent — missing pairs go into `notFound`, not errors.
 - Errors: 400 (validation), 401, 403 (manager viewing another manager's list), 404 (manager/customer missing), 409 not raised (upsert swallows the duplicate-collision race).
+
+### Collections (`src/routes/collections.ts`) — T9
+One row per store visit (`Collection`) + one row per SKU in that visit (`CollectionDetail`). GPS verification is computed server-side from the mobile-reported coords vs the customer's geocoded location — `isVerified` flips true when the distance is under 100 m and both coordinates exist. POST is idempotent via `clientUuid` (the mobile app's batch key): replaying the same payload returns the existing record with HTTP 200, never 409.
+
+| Method | Path | Auth | Body / Query | Returns |
+| --- | --- | --- | --- | --- |
+| GET    | `/collections`        | auth (manager: own; admin: all) | query: `page`(1), `pageSize`(20), `managerId?` (admin only), `customerId?`, `fromDate?`, `toDate?`, `isVerified?` | `{data: Collection[], total, page, pageSize}` — each row nested with `customer:{id,code,name,address}`, `manager:{id,name}`, `detailsCount` |
+| GET    | `/collections/:id`    | auth (manager: own; admin: any) | path: `id` | full Collection + `details[]` with `cigarSpec` embedded |
+| POST   | `/collections`        | auth (manager: must be assigned to customer; admin: any customer) | `{customerId, clientUuid, gpsLat, gpsLng, gpsAccuracy, photoUrls?, collectedAt, details:[{cigarSpecId, salesQty, actualStockLoose, countedStockLoose, actualStockBoxed, countedStockBoxed}]}` | 201 + created Collection (or 200 + existing on idempotent replay) |
+| DELETE | `/collections/:id`    | ADMIN | path: `id` | `{id, deleted:true}` — hard delete, cascades to CollectionDetail |
+
+- `distanceToCustomerM = haversineDistance(customer.lat, customer.lng, gpsLat, gpsLng)` (Earth R = 6 371 km). `null` if either side is missing or input is non-finite.
+- `isVerified = distance != null && distance < 100`.
+- `managerId` on every Collection is always `req.user.sub` — the body has no `managerId` field; admins create on their own behalf (cross-manager delegation, if needed later, would be a separate body field).
+- `photoUrls` is stored as a JSON-encoded TEXT string (SQLite has no JSON type). Every response parses it back to `string[]`.
+- POST runs inside `prisma.$transaction`: a header `Collection` row + all `CollectionDetail` rows commit atomically. FK violations on unknown `cigarSpecId` are pre-validated inside the transaction so the error is a clean 400, not a Prisma P2003.
+- `clientUuid` is the idempotency key. The route does an upfront `findUnique` by `clientUuid`; on hit returns 200 with the existing record. On race (concurrent insert), the unique-constraint catch (P2002) refetches and still returns 200.
+- List view excludes `details` (only `detailsCount`) and excludes `customer.lat/lng` to keep payloads small for the dashboard; `GET /:id` returns everything.
+- Errors: 400 (validation, bad date, unknown cigarSpec), 401, 403 (manager creating on unassigned customer / reading another manager's visit), 404 (customer/collection), 409 not raised (idempotency).
 
 ## Database
 

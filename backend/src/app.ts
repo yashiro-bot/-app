@@ -20,6 +20,7 @@ import { registerUsersRoutes } from './routes/users.js';
 import { registerCustomerRoutes } from './routes/customers.js';
 import { registerCustomerImportRoutes } from './routes/customers-import.js';
 import { registerAssignmentRoutes } from './routes/assignments.js';
+import { registerCollectionRoutes } from './routes/collections.js';
 
 export async function buildApp(): Promise<FastifyInstance> {
   const app = Fastify({
@@ -110,6 +111,7 @@ export async function buildApp(): Promise<FastifyInstance> {
   await registerCustomerRoutes(app);
   await registerCustomerImportRoutes(app);
   await registerAssignmentRoutes(app);
+  await registerCollectionRoutes(app);
 
   // ─── Centralized error handler ───────────────────────────────────────────
   app.setErrorHandler<FastifyError>((err, _req, reply) => {
