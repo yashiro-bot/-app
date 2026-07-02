@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { onLoad } from '@dcloudio/uni-app';
-import { reactive, ref } from 'vue';
+import { onLoad, onHide } from '@dcloudio/uni-app';
+import { reactive, ref, computed } from 'vue';
 import GpsBadge from '../../components/GpsBadge.vue';
 import PhotoUploader from '../../components/PhotoUploader.vue';
 import { listCigarSpecs, type CigarSpec } from '../../api/cigar-specs';
@@ -31,6 +31,23 @@ const lastFix = ref<LocationResult | null>(null);
 const gpsError = ref('');
 const photos = ref<string[]>([]);
 
+// ── Spec pagination ────────────────────────────────────
+
+const currentIndex = ref(0);
+
+const currentSpec = computed<CigarSpec | null>(() =>
+  specs.value.length > 0 ? specs.value[currentIndex.value] ?? null : null,
+);
+
+const hasPrev = computed(() => currentIndex.value > 0);
+const hasNext = computed(() => currentIndex.value < specs.value.length - 1);
+const progressText = computed(() => {
+  if (specs.value.length === 0) return '';
+  return `${currentIndex.value + 1} / ${specs.value.length}`;
+});
+
+// ── Lifecycle ───────────────────────────────────────────
+
 onLoad((query) => {
   const raw = query?.id;
   const id = Array.isArray(raw) ? Number(raw[0]) : Number(raw);
@@ -41,6 +58,13 @@ onLoad((query) => {
   fetchSpecs();
   void refreshGps();
 });
+
+// Auto-save when page hides (phone call, app switch, etc.)
+onHide(() => {
+  autoSaveDraft();
+});
+
+// ── Data fetching ───────────────────────────────────────
 
 async function fetchSpecs(): Promise<void> {
   try {
@@ -71,6 +95,8 @@ async function refreshGps(): Promise<void> {
   }
 }
 
+// ── Spec navigation ─────────────────────────────────────
+
 function ensureRow(specId: number): RowInput {
   if (!rows[specId]) rows[specId] = emptyRow();
   return rows[specId]!;
@@ -83,15 +109,22 @@ function onNumberInput(specId: number, key: keyof RowInput, event: Event): void 
   ensureRow(specId)[key] = Number.isFinite(n) && n >= 0 ? n : 0;
 }
 
-function buildOfflineRecord(clientUuid: string) {
-  const details: {
-    cigarSpecId: number;
-    salesQty: number;
-    actualStockLoose: number;
-    countedStockLoose: number;
-    actualStockBoxed: number;
-    countedStockBoxed: number;
-  }[] = [];
+function goPrev(): void {
+  if (!hasPrev.value) return;
+  autoSaveDraft();
+  currentIndex.value--;
+}
+
+function goNext(): void {
+  if (!hasNext.value) return;
+  autoSaveDraft();
+  currentIndex.value++;
+}
+
+// ── Auto-save draft ─────────────────────────────────────
+
+function buildDraftRecord() {
+  const details: OfflineQueueDetail[] = [];
   for (const spec of specs.value) {
     const r = rows[spec.id];
     if (!r) continue;
@@ -104,8 +137,18 @@ function buildOfflineRecord(clientUuid: string) {
       countedStockBoxed: r.boxedCounted,
     });
   }
-  return {
-    clientUuid,
+  // Only save if at least one field has data
+  const hasData = details.some(
+    (d) =>
+      d.salesQty > 0 ||
+      d.actualStockLoose > 0 ||
+      d.countedStockLoose > 0 ||
+      d.actualStockBoxed > 0 ||
+      d.countedStockBoxed > 0,
+  );
+  if (!hasData) return;
+
+  OfflineQueue.enqueue({
     customerId: customerId.value,
     gpsLat: lastFix.value?.latitude ?? 0,
     gpsLng: lastFix.value?.longitude ?? 0,
@@ -113,8 +156,25 @@ function buildOfflineRecord(clientUuid: string) {
     photoUrls: photos.value,
     collectedAt: new Date().toISOString(),
     details,
-  };
+  });
 }
+
+interface OfflineQueueDetail {
+  cigarSpecId: number;
+  salesQty: number;
+  actualStockLoose: number;
+  countedStockLoose: number;
+  actualStockBoxed: number;
+  countedStockBoxed: number;
+}
+
+function autoSaveDraft(): void {
+  if (customerId.value === 0) return;
+  if (specs.value.length === 0) return;
+  buildDraftRecord();
+}
+
+// ── Submit ──────────────────────────────────────────────
 
 function buildPostPayload(): CollectionInput {
   const details: CollectionInput['details'] = [];
@@ -134,26 +194,6 @@ function buildPostPayload(): CollectionInput {
   };
 }
 
-function onSaveDraft(): void {
-  if (submitting.value) return;
-  if (specs.value.length === 0) {
-    uni.showToast({ title: '规格未加载', icon: 'none' });
-    return;
-  }
-  const record = buildOfflineRecord('placeholder');
-  OfflineQueue.enqueue({
-    customerId: record.customerId,
-    gpsLat: record.gpsLat,
-    gpsLng: record.gpsLng,
-    gpsAccuracy: record.gpsAccuracy,
-    photoUrls: record.photoUrls,
-    collectedAt: record.collectedAt,
-    details: record.details,
-  });
-  uni.showToast({ title: '已保存草稿', icon: 'success' });
-  setTimeout(() => uni.navigateBack(), 600);
-}
-
 async function onSubmit(): Promise<void> {
   if (submitting.value) return;
   if (customerId.value === 0) {
@@ -168,6 +208,10 @@ async function onSubmit(): Promise<void> {
     uni.showToast({ title: '至少添加 1 张照片', icon: 'none' });
     return;
   }
+
+  // Final auto-save before submit
+  autoSaveDraft();
+
   submitting.value = true;
   const payload = buildPostPayload();
   try {
@@ -202,7 +246,8 @@ async function onSubmit(): Promise<void> {
 
 <template>
   <view class="collect-page">
-    <view class="card">
+    <!-- Header: customer info + GPS -->
+    <view class="card header-card">
       <view class="card-title">采集信息</view>
       <view class="card-row">
         <text class="label">客户 ID：{{ customerId || '—' }}</text>
@@ -216,81 +261,95 @@ async function onSubmit(): Promise<void> {
       <view v-if="gpsError" class="error-text">{{ gpsError }}</view>
     </view>
 
+    <!-- Photos -->
     <view class="card">
       <view class="card-title">
         现场照片
-        <text class="card-subtitle">已添加 {{ photos.length }} 张照片 (至少 1 张必填)</text>
+        <text class="card-subtitle">已添加 {{ photos.length }} 张照片</text>
       </view>
       <PhotoUploader v-model="photos" :max="9" />
     </view>
 
-    <view class="card">
-      <view class="card-title">规格明细（{{ specs.length }}）</view>
-      <scroll-view scroll-y class="spec-scroll">
-        <view v-for="spec in specs" :key="spec.id" class="spec-row">
-          <view class="spec-head">
-            <text class="spec-code">{{ spec.code }}</text>
-            <text class="spec-name">{{ spec.name }}</text>
+    <!-- Spec input (pagination) -->
+    <view class="card spec-card">
+      <view v-if="currentSpec" :key="currentSpec.id" class="spec-section">
+        <view class="spec-head">
+          <text class="spec-code">{{ currentSpec.code }}</text>
+          <text class="spec-name">{{ currentSpec.name }}</text>
+          <text class="spec-progress">{{ progressText }}</text>
+        </view>
+
+        <view class="input-grid">
+          <view class="input-cell">
+            <text class="input-label">销售</text>
+            <input
+              type="number"
+              class="num-input"
+              :value="String(rows[currentSpec.id]?.sales ?? 0)"
+              @input="onNumberInput(currentSpec.id, 'sales', $event)"
+            />
           </view>
-          <view class="input-grid">
-            <view class="input-cell">
-              <text class="input-label">销售</text>
-              <input
-                type="number"
-                class="num-input"
-                :value="String(rows[spec.id]?.sales ?? 0)"
-                @input="onNumberInput(spec.id, 'sales', $event)"
-              />
-            </view>
-            <view class="input-cell">
-              <text class="input-label">裸养实</text>
-              <input
-                type="number"
-                class="num-input"
-                :value="String(rows[spec.id]?.looseActual ?? 0)"
-                @input="onNumberInput(spec.id, 'looseActual', $event)"
-              />
-            </view>
-            <view class="input-cell">
-              <text class="input-label">裸养盘</text>
-              <input
-                type="number"
-                class="num-input"
-                :value="String(rows[spec.id]?.looseCounted ?? 0)"
-                @input="onNumberInput(spec.id, 'looseCounted', $event)"
-              />
-            </view>
-            <view class="input-cell">
-              <text class="input-label">盒养实</text>
-              <input
-                type="number"
-                class="num-input"
-                :value="String(rows[spec.id]?.boxedActual ?? 0)"
-                @input="onNumberInput(spec.id, 'boxedActual', $event)"
-              />
-            </view>
-            <view class="input-cell">
-              <text class="input-label">盒养盘</text>
-              <input
-                type="number"
-                class="num-input"
-                :value="String(rows[spec.id]?.boxedCounted ?? 0)"
-                @input="onNumberInput(spec.id, 'boxedCounted', $event)"
-              />
-            </view>
+          <view class="input-cell">
+            <text class="input-label">裸养实</text>
+            <input
+              type="number"
+              class="num-input"
+              :value="String(rows[currentSpec.id]?.looseActual ?? 0)"
+              @input="onNumberInput(currentSpec.id, 'looseActual', $event)"
+            />
+          </view>
+          <view class="input-cell">
+            <text class="input-label">裸养盘</text>
+            <input
+              type="number"
+              class="num-input"
+              :value="String(rows[currentSpec.id]?.looseCounted ?? 0)"
+              @input="onNumberInput(currentSpec.id, 'looseCounted', $event)"
+            />
+          </view>
+          <view class="input-cell">
+            <text class="input-label">盒养实</text>
+            <input
+              type="number"
+              class="num-input"
+              :value="String(rows[currentSpec.id]?.boxedActual ?? 0)"
+              @input="onNumberInput(currentSpec.id, 'boxedActual', $event)"
+            />
+          </view>
+          <view class="input-cell">
+            <text class="input-label">盒养盘</text>
+            <input
+              type="number"
+              class="num-input"
+              :value="String(rows[currentSpec.id]?.boxedCounted ?? 0)"
+              @input="onNumberInput(currentSpec.id, 'boxedCounted', $event)"
+            />
           </view>
         </view>
-      </scroll-view>
+      </view>
+
+      <!-- Navigation buttons -->
+      <view class="nav-row">
+        <button
+          class="nav-btn nav-btn--prev"
+          :disabled="!hasPrev"
+          @click="goPrev"
+        >
+          上一页
+        </button>
+        <view class="nav-spacer" />
+        <button
+          class="nav-btn nav-btn--next"
+          :disabled="!hasNext"
+          @click="goNext"
+        >
+          下一页
+        </button>
+      </view>
     </view>
 
+    <!-- Submit -->
     <view class="action-bar">
-      <button
-        class="btn-draft"
-        :disabled="submitting"
-        @click="onSaveDraft"
-      >
-        保存草稿
-      </button>
       <button
         class="btn-primary"
         :disabled="submitting || photos.length === 0"
@@ -306,143 +365,181 @@ async function onSubmit(): Promise<void> {
 .collect-page {
   display: flex;
   flex-direction: column;
-  height: 100vh;
+  min-height: 100vh;
   background: #f5f6f8;
+  padding-bottom: 100rpx;
 }
 .card {
   background: #ffffff;
-  border-radius: 8px;
-  padding: 14px 16px;
-  margin: 10px 12px;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+  border-radius: 12rpx;
+  padding: 24rpx;
+  margin: 12rpx 16rpx;
+  box-shadow: 0 2rpx 8rpx rgba(0, 0, 0, 0.04);
 }
-.card:last-of-type {
-  flex: 1;
-  min-height: 0;
-  display: flex;
-  flex-direction: column;
+.header-card {
+  padding: 28rpx 24rpx;
 }
 .card-title {
-  font-size: 15px;
+  font-size: 30rpx;
   font-weight: 600;
-  color: #333333;
-  margin-bottom: 10px;
+  color: #1a1a1a;
+  margin-bottom: 16rpx;
 }
 .card-subtitle {
-  font-size: 12px;
+  font-size: 24rpx;
   font-weight: 400;
-  color: #888888;
-  margin-left: 8px;
+  color: #8a8a8a;
+  margin-left: 12rpx;
 }
 .card-row {
-  margin-bottom: 8px;
-  font-size: 14px;
+  margin-bottom: 12rpx;
+  font-size: 28rpx;
   color: #333333;
 }
 .gps-row {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 16rpx;
 }
 .label {
-  font-size: 14px;
+  font-size: 28rpx;
   color: #333333;
 }
 .btn-secondary {
   background: #ffffff;
   color: #1989fa;
-  border: 1px solid #1989fa;
-  border-radius: 6px;
-  padding: 6px 12px;
-  font-size: 13px;
+  border: 2rpx solid #1989fa;
+  border-radius: 8rpx;
+  padding: 8rpx 20rpx;
+  font-size: 26rpx;
 }
 .btn-secondary[disabled] {
   color: #9bc7f5;
   border-color: #cfe3f7;
 }
 .error-text {
-  margin-top: 6px;
+  margin-top: 8rpx;
   color: #c62828;
-  font-size: 12px;
+  font-size: 24rpx;
 }
-.spec-scroll {
-  flex: 1;
-  min-height: 0;
-  max-height: 60vh;
-}
-.spec-row {
-  padding: 10px 0;
-  border-bottom: 1px solid #f0f0f0;
-}
-.spec-row:last-child {
-  border-bottom: none;
-}
-.spec-head {
-  display: flex;
-  align-items: baseline;
-  gap: 8px;
-  margin-bottom: 6px;
-}
-.spec-code {
-  font-size: 11px;
-  color: #999999;
-  font-family: monospace;
-}
-.spec-name {
-  font-size: 13px;
-  color: #333333;
-}
-.input-grid {
-  display: flex;
-  gap: 6px;
-}
-.input-cell {
+
+/* ── Spec section ─────────────────────────────────────── */
+
+.spec-card {
   flex: 1;
   display: flex;
   flex-direction: column;
 }
+.spec-section {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+}
+.spec-head {
+  display: flex;
+  align-items: baseline;
+  gap: 12rpx;
+  margin-bottom: 20rpx;
+}
+.spec-code {
+  font-size: 22rpx;
+  color: #999999;
+  font-family: monospace;
+}
+.spec-name {
+  font-size: 28rpx;
+  font-weight: 600;
+  color: #1a1a1a;
+  flex: 1;
+}
+.spec-progress {
+  font-size: 22rpx;
+  color: #8a8a8a;
+  background: #f0f4f8;
+  padding: 4rpx 14rpx;
+  border-radius: 20rpx;
+}
+.input-grid {
+  display: flex;
+  gap: 12rpx;
+  flex-wrap: wrap;
+}
+.input-cell {
+  flex: 1 1 calc(33.33% - 12rpx);
+  min-width: 160rpx;
+  display: flex;
+  flex-direction: column;
+}
 .input-label {
-  font-size: 10px;
+  font-size: 22rpx;
   color: #888888;
-  margin-bottom: 2px;
+  margin-bottom: 6rpx;
 }
 .num-input {
   width: 100%;
-  height: 30px;
-  padding: 0 4px;
-  font-size: 13px;
+  height: 72rpx;
+  padding: 0 12rpx;
+  font-size: 28rpx;
   text-align: center;
   background: #f8f9fb;
-  border: 1px solid #e6e8eb;
-  border-radius: 4px;
+  border: 2rpx solid #e6e8eb;
+  border-radius: 8rpx;
   box-sizing: border-box;
 }
-.action-bar {
+
+/* ── Navigation ───────────────────────────────────────── */
+
+.nav-row {
   display: flex;
-  gap: 10px;
-  padding: 12px;
-  background: #ffffff;
-  border-top: 1px solid #e6e8eb;
+  gap: 16rpx;
+  margin-top: auto;
+  padding-top: 20rpx;
 }
-.btn-draft,
-.btn-primary {
+.nav-btn {
   flex: 1;
-  height: 42px;
-  border-radius: 6px;
-  font-size: 15px;
+  height: 72rpx;
+  border-radius: 8rpx;
+  font-size: 28rpx;
   border: none;
 }
-.btn-draft {
+.nav-btn--prev {
   background: #ffffff;
   color: #1989fa;
-  border: 1px solid #1989fa;
+  border: 2rpx solid #1989fa;
 }
-.btn-primary {
+.nav-btn--next {
   background: #1989fa;
   color: #ffffff;
 }
-.btn-primary[disabled],
-.btn-draft[disabled] {
-  opacity: 0.6;
+.nav-btn[disabled] {
+  opacity: 0.4;
+}
+.nav-spacer {
+  width: 0;
+}
+
+/* ── Action bar ───────────────────────────────────────── */
+
+.action-bar {
+  padding: 16rpx;
+  background: #ffffff;
+  border-top: 2rpx solid #e6e8eb;
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  z-index: 100;
+}
+.btn-primary {
+  width: 100%;
+  height: 88rpx;
+  border-radius: 8rpx;
+  font-size: 32rpx;
+  background: linear-gradient(135deg, #1989fa, #07c160);
+  color: #ffffff;
+  border: none;
+}
+.btn-primary[disabled] {
+  opacity: 0.5;
 }
 </style>

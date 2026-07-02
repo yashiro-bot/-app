@@ -15,6 +15,9 @@ import { formatDistance, formatTime } from '../../utils/format';
  *  - Pull-down refresh: re-fetches the first page and stops the spinner.
  *  - Tap a card: navigate to /pages/history/detail?id=X.
  *  - Distance: <1000m → "XX米", >=1000m → "X.X公里".
+ *  - Distance color:
+ *      > 50m   → red (距离超出) — 卡片左侧条红色
+ *      <= 50m  → green (距离达标) — 卡片左侧条绿色
  *  - Verified → green "已核实" badge, otherwise red "未核实".
  */
 
@@ -64,6 +67,27 @@ function onCardTap(item: CollectionListItem): void {
 
 const hasAny = computed(() => items.value.length > 0);
 
+/**
+ * Returns a CSS class for the distance text based on the GPS deviation:
+ *  - 'distance-far'    (>50米)   → 红色
+ *  - 'distance-near'   (≤50米)   → 绿色
+ *  - 'distance-unknown' (无数据)  → 灰色
+ */
+function distanceClass(item: CollectionListItem): string {
+  const d = item.distanceToCustomerM;
+  if (d === null || d === undefined || !Number.isFinite(d)) return 'distance-unknown';
+  return d > 50 ? 'distance-far' : 'distance-near';
+}
+
+/**
+ * Returns a left-border class for the card itself, mirroring the distance color.
+ */
+function cardDistanceClass(item: CollectionListItem): string {
+  const d = item.distanceToCustomerM;
+  if (d === null || d === undefined || !Number.isFinite(d)) return '';
+  return d > 50 ? 'card--far' : 'card--near';
+}
+
 onShow(() => {
   void fetchList();
 });
@@ -91,6 +115,7 @@ onPullDownRefresh(onRefresh);
         v-for="c in items"
         :key="c.id"
         class="card"
+        :class="cardDistanceClass(c)"
         @click="onCardTap(c)"
       >
         <view class="card-row card-row--top">
@@ -108,7 +133,7 @@ onPullDownRefresh(onRefresh);
         </view>
         <view class="card-row card-row--meta">
           <text class="meta-label">距离客户：</text>
-          <text class="meta-value">{{ formatDistance(c.distanceToCustomerM) }}</text>
+          <text class="meta-value" :class="distanceClass(c)">{{ formatDistance(c.distanceToCustomerM) }}</text>
         </view>
       </view>
     </view>
@@ -168,6 +193,16 @@ onPullDownRefresh(onRefresh);
   border-radius: 12rpx;
   padding: 24rpx;
   box-shadow: 0 2rpx 8rpx rgba(0, 0, 0, 0.04);
+  border-left: 8rpx solid transparent;
+  box-sizing: border-box;
+}
+
+.card--near {
+  border-left-color: #67c23a;
+}
+
+.card--far {
+  border-left-color: #f56c6c;
 }
 
 .card:active {
@@ -229,5 +264,19 @@ onPullDownRefresh(onRefresh);
 
 .meta-value {
   color: #303133;
+}
+
+.distance-near {
+  color: #67c23a;
+  font-weight: 600;
+}
+
+.distance-far {
+  color: #f56c6c;
+  font-weight: 600;
+}
+
+.distance-unknown {
+  color: #909399;
 }
 </style>
