@@ -2001,23 +2001,26 @@ var _pageWrapperEl = null;
                       if (draft) {
                         var parsed = JSON.parse(draft);
                         if (parsed && typeof parsed === 'object') {
-                          this.formData = parsed;
-                          // 跳转到最后一个填写的规格
-                          if (this.filteredSpecs && this.filteredSpecs.length > 0) {
+                          // Handle both old format (raw formData) and new format (wrapped)
+                          var formData = parsed.formData || parsed;
+                          this.formData = formData;
+                          debugLog('Custom collect: draft loaded for ' + this.customerId + ' (' + Object.keys(formData).length + ' specs)');
+                          var self = this;
+                          this.$nextTick(function() {
+                            if (!self.filteredSpecs || self.filteredSpecs.length === 0) return;
                             var lastIdx = -1;
-                            for (var fi = 0; fi < this.filteredSpecs.length; fi++) {
-                              var sid = this.filteredSpecs[fi].id;
-                              var d = parsed[sid];
+                            for (var fi = 0; fi < self.filteredSpecs.length; fi++) {
+                              var sid = self.filteredSpecs[fi].id;
+                              var d = formData[sid];
                               if (d && (Number(d.sales)>0 || Number(d.looseActual)>0 || Number(d.looseCounted)>0 || Number(d.boxedActual)>0 || Number(d.boxedCounted)>0 || Number(d.diao)>0 || Number(d.hexiao)>0 || Number(d.zixi)>0 || Number(d.loose_price)>0 || Number(d.box_price)>0)) {
                                 lastIdx = fi;
                               }
                             }
                             if (lastIdx >= 0) {
-                              this.currentIndex = lastIdx;
-                              debugLog('Custom collect: jump to last filled spec index ' + lastIdx);
+                              self.currentIndex = lastIdx;
+                              debugLog('Custom collect: jump to last filled spec index ' + lastIdx + ' / ' + self.filteredSpecs.length);
                             }
-                          }
-                          debugLog('Custom collect: draft loaded for ' + this.customerId + ' (' + Object.keys(parsed).length + ' specs)');
+                          });
                         }
                       }
                     } catch (e) { debugLog('Draft load failed: ' + e.message, true); }
@@ -2027,7 +2030,8 @@ var _pageWrapperEl = null;
                     this.savingDraft = true;
                     try {
                       var key = 'cigar:draft:' + this.customerId;
-                      localStorage.setItem(key, JSON.stringify(this.formData));
+                      var data = { formData: this.formData, customerName: (this.customer && this.customer.name) || '' };
+                      localStorage.setItem(key, JSON.stringify(data));
                       debugLog('Custom collect: draft saved');
                     } catch (e) { debugLog('Draft save failed: ' + e.message, true); }
                     finally { this.savingDraft = false; }
@@ -2389,10 +2393,19 @@ var _pageWrapperEl = null;
                   var drafts = [];
                   for (var j = 0; j < ids.length; j++) {
                     var cid = ids[j];
-                    var c = window._findCustomer ? window._findCustomer(cid) : null;
+                    // Try getting customerName from draft data first (new format)
+                    var name = '';
+                    try {
+                      var raw = JSON.parse(localStorage.getItem('cigar:draft:' + cid));
+                      if (raw && raw.customerName) name = raw.customerName;
+                    } catch(e) {}
+                    if (!name) {
+                      var c = window._findCustomer ? window._findCustomer(cid) : null;
+                      name = c ? c.name : ('客户 #' + cid);
+                    }
                     drafts.push({
                       customerId: cid,
-                      customerName: c ? c.name : '客户 #' + cid
+                      customerName: name
                     });
                   }
                   self.drafts = drafts;
@@ -2401,7 +2414,7 @@ var _pageWrapperEl = null;
                 continueDraft: function(cid) {
                   try {
                     if (typeof uni !== 'undefined' && uni.navigateTo) {
-                      uni.navigateTo({ url: '/pages/collect/index?customerId=' + cid });
+                      uni.navigateTo({ url: '/pages/collect/index?id=' + cid });
                     }
                   } catch(e) { debugLog('continueDraft err: ' + e.message, true); }
                 },
