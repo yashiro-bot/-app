@@ -2002,6 +2002,21 @@ var _pageWrapperEl = null;
                         var parsed = JSON.parse(draft);
                         if (parsed && typeof parsed === 'object') {
                           this.formData = parsed;
+                          // 跳转到最后一个填写的规格
+                          if (this.filteredSpecs && this.filteredSpecs.length > 0) {
+                            var lastIdx = -1;
+                            for (var fi = 0; fi < this.filteredSpecs.length; fi++) {
+                              var sid = this.filteredSpecs[fi].id;
+                              var d = parsed[sid];
+                              if (d && (Number(d.sales)>0 || Number(d.looseActual)>0 || Number(d.looseCounted)>0 || Number(d.boxedActual)>0 || Number(d.boxedCounted)>0 || Number(d.diao)>0 || Number(d.hexiao)>0 || Number(d.zixi)>0 || Number(d.loose_price)>0 || Number(d.box_price)>0)) {
+                                lastIdx = fi;
+                              }
+                            }
+                            if (lastIdx >= 0) {
+                              this.currentIndex = lastIdx;
+                              debugLog('Custom collect: jump to last filled spec index ' + lastIdx);
+                            }
+                          }
                           debugLog('Custom collect: draft loaded for ' + this.customerId + ' (' + Object.keys(parsed).length + ' specs)');
                         }
                       }
