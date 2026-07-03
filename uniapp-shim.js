@@ -1846,47 +1846,51 @@ var _pageWrapperEl = null;
                 });
               };
 
-              // Helper: GPS via uni.getLocation with fallback to navigator.geolocation
+              // Helper: GPS via navigator.geolocation (high accuracy first)
               window.__getGPS = function() {
                 return new Promise(function(resolve, reject) {
                   var done = false;
+                  var gpsRes = null;
                   function finish(lat, lng, acc) {
                     if (!done) { done = true; resolve({ latitude: lat, longitude: lng, accuracy: acc || 50 }); }
                   }
-                  // Priority 1: native Android bridge (instant, from LocationManager)
-                  try {
-                    if (typeof Android !== 'undefined' && Android.getLastKnownLocation) {
-                      var nativeLoc = Android.getLastKnownLocation();
-                      if (nativeLoc) {
-                        var parsed = JSON.parse(nativeLoc);
-                        if (parsed && parsed.lat && parsed.lng) {
-                          finish(parsed.lat, parsed.lng, parsed.acc || 20);
-                        }
-                      }
-                    }
-                  } catch(e) { debugLog('native GPS err: ' + e.message, true); }
-                  // Priority 2: navigator.geolocation (browser API, now with native permission support)
+                  // Priority 1: navigator.geolocation (high accuracy, fresh fix)
                   function tryNavigator() {
                     if (typeof navigator !== 'undefined' && navigator.geolocation) {
                       navigator.geolocation.getCurrentPosition(
                         function(pos) { finish(pos.coords.latitude, pos.coords.longitude, pos.coords.accuracy); },
                         function() { if (!done) tryPlusGeo(); },
-                        { enableHighAccuracy: true, timeout: 10000, maximumAge: 120000 }
+                        { enableHighAccuracy: true, timeout: 15000, maximumAge: 30000 }
                       );
-                      setTimeout(function() { if (!done) tryPlusGeo(); }, 10000);
+                      setTimeout(function() { if (!done) tryPlusGeo(); }, 15000);
                     } else { tryPlusGeo(); }
                   }
                   function tryPlusGeo() {
                     if (typeof plus !== 'undefined' && plus.geolocation) {
                       plus.geolocation.getCurrentPosition(
-                        function(e) { resolve({ latitude: e.coords.latitude, longitude: e.coords.longitude, accuracy: e.coords.accuracy }); },
-                        function(e) { reject(new Error(e && e.message || 'GPS failed')); },
-                        { enableHighAccuracy: true, timeout: 5000 }
+                        function(e) { finish(e.coords.latitude, e.coords.longitude, e.coords.accuracy); },
+                        function(e) { if (!done) tryNative(); },
+                        { enableHighAccuracy: true, timeout: 10000 }
                       );
-                    } else { reject(new Error('No geolocation')); }
+                      setTimeout(function() { if (!done) tryNative(); }, 10000);
+                    } else { tryNative(); }
                   }
-                  // If native didn't resolve yet, try navigator after a short delay
-                  setTimeout(function() { if (!done) tryNavigator(); }, 100);
+                  function tryNative() {
+                    try {
+                      if (typeof Android !== 'undefined' && Android.getLastKnownLocation) {
+                        var nativeLoc = Android.getLastKnownLocation();
+                        if (nativeLoc) {
+                          var parsed = JSON.parse(nativeLoc);
+                          if (parsed && parsed.lat && parsed.lng) {
+                            finish(parsed.lat, parsed.lng, parsed.acc || 20);
+                            return;
+                          }
+                        }
+                      }
+                    } catch(e) { debugLog('native GPS err: ' + e.message, true); }
+                    if (!done) reject(new Error('GPS failed'));
+                  }
+                  tryNavigator();
                 });
               };
 
