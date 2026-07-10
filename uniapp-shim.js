@@ -44,10 +44,10 @@
     debugLog(msg, true);
   }, true);
 
-  debugLog('Shim v19 starting (script-tag injection)...');
+  debugLog('Shim v20 starting (script-tag injection)...');
 
   // ───── App 版本 & 更新配置 ─────
-  window.__appVersion = { code: 114, name: '1.1.4' };
+  window.__appVersion = { code: 115, name: '1.1.5' };
   window.__appDisplay = '鹭茄记 V' + window.__appVersion.name;
   window.__updateUrl = (function(){
     try { return localStorage.getItem('cigar:update_url') || 'https://raw.githubusercontent.com/yashiro-bot/-app/main/version.json'; } catch(e) { return ''; }
@@ -376,7 +376,7 @@
       if (color) statusEl.style.color = color;
     };
 
-    // 方式A：uni.openSetting（UniApp 原生设置页，最可能生效）
+    // uni.openSetting 已在 shim 的 mock uni 对象中实现（不调用 intent://，直接展示手动操作指引）
     try {
       if (typeof uni !== 'undefined' && uni.openSetting) {
         setStatus('正在打开权限设置...', '#e65100');
@@ -391,36 +391,28 @@
           },
           fail: function(err) {
             debugLog('openSetting failed: ' + (err && (err.errMsg || JSON.stringify(err))), true);
-            tryIntent();
+            showManualGuide();
           }
         });
         return;
       }
     } catch(e) { debugLog('uni.openSetting error: ' + e.message, true); }
-    tryIntent();
+    showManualGuide();
 
-    function tryIntent() {
-      setStatus('正在跳转应用设置...', '#e65100');
-      if (btn) btn.textContent = '跳转设置中...';
-      var ok = _openUrl('intent://com.cigar.collection/#Intent;action=android.settings.APPLICATION_DETAILS_SETTINGS;S:package=com.cigar.collection;end', 'location intent');
-      if (ok) {
-        setStatus('请允许定位权限后返回', '#2e7d32');
-        if (btn) btn.textContent = '✓ 已跳转设置';
-        setTimeout(function() { if (btn) btn.textContent = '定位未开启？点击跳转系统设置 →'; }, 6000);
-      } else {
-        // 方式C：显示手动操作指南
-        setStatus('无法自动跳转，请手动操作：', '#c00');
-        if (btn) {
-          btn.textContent = '手动：设置 → 应用 → 雪茄采集 → 权限 → 位置信息';
-          btn.style.fontSize = '11px'; btn.style.whiteSpace = 'normal'; btn.style.height = 'auto'; btn.style.padding = '8px'; btn.style.lineHeight = '1.4';
-        }
-        setTimeout(function() {
-          if (btn) {
-            btn.textContent = '定位未开启？点击跳转系统设置 →';
-            btn.style.fontSize = '13px'; btn.style.whiteSpace = ''; btn.style.height = ''; btn.style.padding = '10px'; btn.style.lineHeight = '';
-          }
-        }, 10000);
+    function showManualGuide() {
+      // WebView 无法跳转系统设置页（intent:// 不被WebViewClient支持，会导致 ERR_UNKNOWN_URL_SCHEME 错误页）
+      // 直接显示手动操作指引
+      setStatus('无法自动跳转，请手动操作：', '#c00');
+      if (btn) {
+        btn.textContent = '手动：设置 → 应用 → 雪茄采集 → 权限 → 位置信息';
+        btn.style.fontSize = '11px'; btn.style.whiteSpace = 'normal'; btn.style.height = 'auto'; btn.style.padding = '8px'; btn.style.lineHeight = '1.4';
       }
+      setTimeout(function() {
+        if (btn) {
+          btn.textContent = '定位未开启？点击跳转系统设置 →';
+          btn.style.fontSize = '13px'; btn.style.whiteSpace = ''; btn.style.height = ''; btn.style.padding = '10px'; btn.style.lineHeight = '';
+        }
+      }, 10000);
     }
   };
 
@@ -480,6 +472,19 @@
     showToast: function(o){var m=(o&&o.title)||(o&&o.message)||'操作成功';if(window.UniAppBridge)window.UniAppBridge.showToast(m);},
     showLoading: noop, hideLoading: noop, showActionSheet: noop,
     showModal: function(o){if(o&&o.content&&window.UniAppBridge)window.UniAppBridge.showToast(o.content);},
+    openSetting: function(o){
+      // WebView 无法跳转系统设置页（intent:// 不被WebViewClient支持）
+      // 直接调用按钮的打开设置逻辑（展示手动操作指引）
+      try {
+        debugLog('uni.openSetting() called from app');
+        if (window.__openLocationSettings) {
+          window.__openLocationSettings();
+          if (o && o.success) o.success({authSetting:{'scope.userLocation':true}});
+          return;
+        }
+      } catch(e) { debugLog('uni.openSetting error: ' + e.message, true); }
+      if (o && o.fail) o.fail({errMsg:'openSetting not supported in WebView'});
+    },
     getSystemInfoSync: function(){return {platform:'android',version:'14',model:'Android',screenWidth:window.innerWidth,screenHeight:window.innerHeight,windowWidth:window.innerWidth,windowHeight:window.innerHeight,statusBarHeight:24,safeAreaInsets:{top:0,bottom:0,left:0,right:0},safeArea:{top:0,bottom:0,left:0,right:0,width:window.innerWidth,height:window.innerHeight},pixelRatio:DPR,SDKVersion:'14',deviceId:'debug-device',deviceBrand:'Test',deviceModel:'Android',deviceType:'phone',devicePixelRatio:DPR,deviceOrientation:'portrait',osName:'android',osVersion:'14',osLanguage:'zh-CN',system:'Android 14',host:'',appId:'com.cigar.collection',appName:'雪茄采集',appVersion:'1.0.0',appVersionCode:'1',browserName:'webview',browserVersion:'1.0',uniPlatform:'web',uniCompileVersion:'4.84',uniRuntimeVersion:'3.0'};},
     getSystemInfo: function(s){if(s)s(this.getSystemInfoSync());},
     chooseImage: function(o,s,f){if(f)f({errMsg:'chooseImage not impl'});},
