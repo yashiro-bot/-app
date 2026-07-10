@@ -47,7 +47,7 @@
   debugLog('Shim v8 starting (script-tag injection)...');
 
   // ───── App 版本 & 更新配置 ─────
-  window.__appVersion = { code: 101, name: '1.0.1' };
+  window.__appVersion = { code: 102, name: '1.0.2' };
   window.__appDisplay = '鹭茄记 V' + window.__appVersion.name;
   window.__updateUrl = (function(){
     try { return localStorage.getItem('cigar:update_url') || 'https://raw.githubusercontent.com/yashiro-bot/-app/main/version.json'; } catch(e) { return ''; }
@@ -88,33 +88,51 @@
     } catch(e) { alert(msg); }
   };
 
-  // ───── 启动时请求定位权限（多重触发） ─────
+  // ───── 启动时请求定位权限（4路触发） ─────
+  window.__locationDenied = false;
   (function(){
-    var tried = 0, maxTries = 5;
+    var tried = 0, maxTries = 4;
     function tryLocation() {
       tried++;
-      // 方式1：浏览器原生 API → 触发 WebView onGeolocationPermissionsShowPrompt
+      // 方式1：浏览器原生 API → WebView → onGeolocationPermissionsShowPrompt
       if (typeof navigator !== 'undefined' && navigator.geolocation) {
         navigator.geolocation.getCurrentPosition(
-          function(pos) { debugLog('Location OK via browser API'); },
-          function(err) { debugLog('Location fail: ' + err.message); },
+          function(pos) { debugLog('Location OK via browser API'); window.__locationDenied = false; },
+          function(err) { debugLog('Location err: ' + err.message); window.__locationDenied = true; },
           { enableHighAccuracy: true, timeout: 8000, maximumAge: 0 }
         );
       }
-      // 方式2：直接调原生桥（若存在）
+      // 方式2：native JS 接口 Android.getLastKnownLocation()
+      if (typeof Android !== 'undefined' && Android.getLastKnownLocation) {
+        try { Android.getLastKnownLocation(); } catch(e) { /* ignore */ }
+      }
+      // 方式3：UniAppBridge 原生桥
       if (window.UniAppBridge && typeof window.UniAppBridge.getLocation === 'function') {
         try {
           window.UniAppBridge.getLocation(
-            JSON.stringify({callbackId:'loc_perm_'+tried}),
-            JSON.stringify({callbackId:'loc_perm_'+tried+'_fail'})
+            JSON.stringify({callbackId:'loc_'+tried}),
+            JSON.stringify({callbackId:'loc_'+tried+'_fail'})
           );
         } catch(e) { /* ignore */ }
       }
       if (tried < maxTries) setTimeout(tryLocation, 2000);
     }
-    // 第一次立即执行，后续每2秒重试，共5次
     setTimeout(tryLocation, 500);
   })();
+
+  // ───── 打开系统定位/应用权限设置 ─────
+  window.__openLocationSettings = function() {
+    try {
+      // 方式A：intent URL（Android 原生处理）
+      window.location.href = 'intent://com.cigar.collection/#Intent;action=android.settings.APPLICATION_DETAILS_SETTINGS;S:package=com.cigar.collection;end';
+    } catch(e) { /* ignore */ }
+    // 方式B：如果 window.open 可用
+    try {
+      if (window.UniAppBridge && window.UniAppBridge.openURL) {
+        window.UniAppBridge.openURL('intent://com.cigar.collection/#Intent;action=android.settings.APPLICATION_DETAILS_SETTINGS;S:package=com.cigar.collection;end');
+      }
+    } catch(e) { /* ignore */ }
+  };
 
   // Force viewport meta (backup for document.write in HTML)
   (function() {
