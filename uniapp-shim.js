@@ -44,10 +44,10 @@
     debugLog(msg, true);
   }, true);
 
-  debugLog('Shim v10 starting (script-tag injection)...');
+  debugLog('Shim v11 starting (script-tag injection)...');
 
   // ───── App 版本 & 更新配置 ─────
-  window.__appVersion = { code: 105, name: '1.0.5' };
+  window.__appVersion = { code: 106, name: '1.0.6' };
   window.__appDisplay = '鹭茄记 V' + window.__appVersion.name;
   window.__updateUrl = (function(){
     try { return localStorage.getItem('cigar:update_url') || 'https://raw.githubusercontent.com/yashiro-bot/-app/main/version.json'; } catch(e) { return ''; }
@@ -264,21 +264,6 @@
     } else {
       fail('当前环境不支持网络请求');
     }
-  };
-    // 方案C：XHR 最终退路
-    try {
-      debugLog('Attempt XHR...');
-      var xhr = new XMLHttpRequest();
-      xhr.open('GET', url, true);
-      xhr.onload = function() {
-        debugLog('XHR status=' + xhr.status);
-        try { done(JSON.parse(xhr.responseText)); } catch(e) { fail('JSON parse error: ' + xhr.responseText.substring(0,100)); }
-      };
-      xhr.onerror = function() { fail('XHR network error'); };
-      xhr.ontimeout = function() { fail('XHR timeout'); };
-      xhr.timeout = 15000;
-      xhr.send();
-    } catch(e) { fail('XHR throw: ' + e.message); }
   };
   window.__showToast = _uniToast;
 
