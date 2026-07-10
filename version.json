@@ -1,6 +1,6 @@
 {
-  "versionCode": 111,
-  "versionName": "1.1.1",
-  "apkUrl": "https://github.com/yashiro-bot/-app/releases/download/v1.1.1/V1.1.1.apk",
-  "note": "定位intent://改为第一优先级，尝试window.location.href后补隐藏<a>点击"
+  "versionCode": 112,
+  "versionName": "1.1.2",
+  "apkUrl": "https://github.com/yashiro-bot/-app/releases/download/v1.1.2/V1.1.2.apk",
+  "note": "下载改为点击按钮触发(用户手势更可靠)，新增window.location.href直接导航退路"
 }

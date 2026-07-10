@@ -44,10 +44,10 @@
     debugLog(msg, true);
   }, true);
 
-  debugLog('Shim v16 starting (script-tag injection)...');
+  debugLog('Shim v17 starting (script-tag injection)...');
 
   // ───── App 版本 & 更新配置 ─────
-  window.__appVersion = { code: 111, name: '1.1.1' };
+  window.__appVersion = { code: 112, name: '1.1.2' };
   window.__appDisplay = '鹭茄记 V' + window.__appVersion.name;
   window.__updateUrl = (function(){
     try { return localStorage.getItem('cigar:update_url') || 'https://raw.githubusercontent.com/yashiro-bot/-app/main/version.json'; } catch(e) { return ''; }
@@ -148,6 +148,12 @@
       debugLog('window.open OK');
       return true;
     } catch(e) { debugLog('window.open error: ' + e.message); }
+    // 方案F：直接导航（对 APK 链接最可能触发 Android 系统下载管理器）
+    try {
+      window.location.href = url;
+      debugLog('location.href OK');
+      return true;
+    } catch(e) { debugLog('location.href error: ' + e.message); }
     return false;
   }
   window.__checkUpdate = function(silent) {
@@ -170,10 +176,15 @@
         debugLog('Update check done: v' + info.versionCode + ' >? cur ' + cur.code);
         if (info.versionCode > cur.code) {
           var apkUrl = info.apkUrl;
-          _btnStatus('发现新版本 ' + info.versionName + '！正在下载...');
-          if (btn) btn.textContent = '下载更新 ' + info.versionName;
-          // 自动尝试下载（多路回退）
-          _openUrl(apkUrl, 'APK download');
+          _btnStatus('发现新版 ' + info.versionName + '，点下面按钮下载', '#e65100');
+          if (btn) {
+            btn.textContent = '点击下载 ' + info.versionName;
+            btn.onclick = function() {
+              btn.textContent = '正在下载...';
+              _btnStatus('正在启动下载...', '#e65100');
+              _openUrl(apkUrl, 'APK download');
+            };
+          }
         } else if (!silent) {
           _btnStatus('已是最新版 (' + cur.name + ')', '#2e7d32');
           if (btn) btn.textContent = '✓ 已是最新版';
