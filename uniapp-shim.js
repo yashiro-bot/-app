@@ -44,10 +44,10 @@
     debugLog(msg, true);
   }, true);
 
-  debugLog('Shim v23 starting (script-tag injection)...');
+  debugLog('Shim v24 starting (script-tag injection)...');
 
   // ───── App 版本 & 更新配置 ─────
-  window.__appVersion = { code: 118, name: '1.1.8' };
+  window.__appVersion = { code: 119, name: '1.1.9' };
   window.__appDisplay = '鹭茄记 V' + window.__appVersion.name;
   window.__updateUrl = (function(){
     try { return localStorage.getItem('cigar:update_url') || 'https://raw.githubusercontent.com/yashiro-bot/-app/main/version.json'; } catch(e) { return ''; }
@@ -96,57 +96,21 @@
     } catch(e) { debugLog('_uniModal DOM fallback failed: ' + e.message, true); }
   }
 
-  // ───── 打开 URL（多路回退：plus.runtime → window.open(_system) → location.href → 复制到剪贴板 → 显示链接） ─────
+  // ───── 打开 URL：WebView 中 window.open 会静默返回 null，window.location.href 也可能被拦截 ─────
+  // 最可靠的方案：直接显示 URL 复制弹窗，让用户复制到浏览器
   function _openUrl(url, debugLabel) {
     debugLog('openUrl(' + debugLabel + '): ' + url);
     var isIntent = url.indexOf('intent://') === 0;
 
-    // intent:// 完全无法处理（WebView 不识别此协议，所有尝试都会触发 ERR_UNKNOWN_URL_SCHEME）
     if (isIntent) {
-      debugLog('intent:// not supported, skipping URL navigation');
-      _showUrlForCopy(url, 'intent 协议不支持，请手动设置：');
+      debugLog('intent:// not supported');
+      _showUrlForCopy(url, '系统设置链接（请手动复制粘贴到浏览器打开，或手动设置权限）');
       return false;
     }
 
-    // 普通 URL（http/https/APK 下载）
-    try {
-      if (typeof plus !== 'undefined' && plus.runtime && plus.runtime.openURL) {
-        plus.runtime.openURL(url);
-        debugLog('plus.runtime.openURL OK');
-        return true;
-      }
-    } catch(e) { debugLog('plus.runtime error: ' + e.message); }
-    try {
-      if (typeof uni !== 'undefined' && uni.downloadFile && url.endsWith('.apk')) {
-        uni.downloadFile({
-          url: url,
-          success: function(res) { debugLog('uni.downloadFile OK: ' + (res.tempFilePath || '')); },
-          fail: function(err) { debugLog('uni.downloadFile fail: ' + (err && (err.errMsg || JSON.stringify(err)))); }
-        });
-        return true;
-      }
-    } catch(e) { debugLog('uni.downloadFile error: ' + e.message); }
-    try {
-      if (window.UniAppBridge && window.UniAppBridge.openURL) {
-        window.UniAppBridge.openURL(url);
-        debugLog('UniAppBridge.openURL OK');
-        return true;
-      }
-    } catch(e) { debugLog('UniAppBridge error: ' + e.message); }
-    try {
-      window.open(url, '_system');
-      debugLog('window.open _system OK');
-      return true;
-    } catch(e) { debugLog('window.open error: ' + e.message); }
-    try {
-      window.location.href = url;
-      debugLog('location.href OK');
-      return true;
-    } catch(e) { debugLog('location.href error: ' + e.message); }
-    // 最终退路：显示链接让用户复制
-    debugLog('All URL open methods failed, showing URL for manual copy');
-    _showUrlForCopy(url, '无法自动打开，请复制下方链接到浏览器：');
-    return false;
+    // 普通 URL：直接显示弹窗（最可靠，不依赖 WebView 跳转能力）
+    _showUrlForCopy(url, '请复制下方链接到浏览器打开');
+    return true;
   }
 
   // 显示链接到屏幕中央，让用户长按复制
