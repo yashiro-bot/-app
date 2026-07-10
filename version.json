@@ -1,6 +1,6 @@
 {
-  "versionCode": 110,
-  "versionName": "1.1.0",
-  "apkUrl": "https://github.com/yashiro-bot/-app/releases/download/v1.1.0/V1.1.0.apk",
-  "note": "定位跳转修复: intent://必须走window.location.href才能触发WebView原生shouldOverrideUrlLoading"
+  "versionCode": 111,
+  "versionName": "1.1.1",
+  "apkUrl": "https://github.com/yashiro-bot/-app/releases/download/v1.1.1/V1.1.1.apk",
+  "note": "定位intent://改为第一优先级，尝试window.location.href后补隐藏<a>点击"
 }

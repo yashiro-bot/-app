@@ -44,10 +44,10 @@
     debugLog(msg, true);
   }, true);
 
-  debugLog('Shim v15 starting (script-tag injection)...');
+  debugLog('Shim v16 starting (script-tag injection)...');
 
   // ───── App 版本 & 更新配置 ─────
-  window.__appVersion = { code: 110, name: '1.1.0' };
+  window.__appVersion = { code: 111, name: '1.1.1' };
   window.__appDisplay = '鹭茄记 V' + window.__appVersion.name;
   window.__updateUrl = (function(){
     try { return localStorage.getItem('cigar:update_url') || 'https://raw.githubusercontent.com/yashiro-bot/-app/main/version.json'; } catch(e) { return ''; }
@@ -96,10 +96,26 @@
     } catch(e) { debugLog('_uniModal DOM fallback failed: ' + e.message, true); }
   }
 
-  // ───── 打开 URL（多路回退：plus.runtime → uni → UniAppBridge → window.open） ─────
+  // ───── 打开 URL（多路回退：intent直接导航→plus.runtime→uni→UniAppBridge→window.open） ─────
   function _openUrl(url, debugLabel) {
     debugLog('openUrl(' + debugLabel + '): ' + url);
-    // 方案A：plus.runtime.openURL（最可能在 UniApp WebView 中打开系统浏览器）
+    // 方案A：intent:// 必须直接 window.location.href（其他方式无法触发 WebView 原生 shouldOverrideUrlLoading）
+    if (url.indexOf('intent://') === 0) {
+      try {
+        debugLog('intent URL via location.href');
+        window.location.href = url;
+        return true;
+      } catch(e) { debugLog('intent location.href error: ' + e.message); }
+      // 退路：创建并点击隐藏链接
+      try {
+        var a = document.createElement('a');
+        a.href = url; a.style.display = 'none';
+        document.body.appendChild(a); a.click(); a.remove();
+        debugLog('intent via hidden <a> click');
+        return true;
+      } catch(e) { debugLog('intent <a> click error: ' + e.message); }
+    }
+    // 方案B：plus.runtime.openURL（打开系统浏览器下载）
     try {
       if (typeof plus !== 'undefined' && plus.runtime && plus.runtime.openURL) {
         plus.runtime.openURL(url);
@@ -107,7 +123,7 @@
         return true;
       }
     } catch(e) { debugLog('plus.runtime error: ' + e.message); }
-    // 方案B：uni.downloadFile（APK 下载专用）
+    // 方案C：uni.downloadFile（APK 下载专用）
     try {
       if (typeof uni !== 'undefined' && uni.downloadFile && url.endsWith('.apk')) {
         uni.downloadFile({
@@ -118,7 +134,7 @@
         return true;
       }
     } catch(e) { debugLog('uni.downloadFile error: ' + e.message); }
-    // 方案C：UniAppBridge.openURL
+    // 方案D：UniAppBridge.openURL
     try {
       if (window.UniAppBridge && window.UniAppBridge.openURL) {
         window.UniAppBridge.openURL(url);
@@ -126,20 +142,12 @@
         return true;
       }
     } catch(e) { debugLog('UniAppBridge error: ' + e.message); }
-    // 方案D：window.open（WebView 可能拦截）
+    // 方案E：window.open
     try {
       window.open(url, '_blank');
       debugLog('window.open OK');
       return true;
     } catch(e) { debugLog('window.open error: ' + e.message); }
-    // 方案E：直接导航（intent:// 必须走 WebView 原生 shouldOverrideUrlLoading）
-    try {
-      if (url.indexOf('intent://') === 0) {
-        window.location.href = url;
-        debugLog('window.location.href OK');
-        return true;
-      }
-    } catch(e) { debugLog('location.href error: ' + e.message); }
     return false;
   }
   window.__checkUpdate = function(silent) {
