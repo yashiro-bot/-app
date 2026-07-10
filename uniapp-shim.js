@@ -47,7 +47,8 @@
   debugLog('Shim v8 starting (script-tag injection)...');
 
   // ───── App 版本 & 更新配置 ─────
-  window.__appVersion = { code: 37, name: '1.0.35' };
+  window.__appVersion = { code: 101, name: '1.0.1' };
+  window.__appDisplay = '鹭茄记 V' + window.__appVersion.name;
   window.__updateUrl = (function(){
     try { return localStorage.getItem('cigar:update_url') || 'https://raw.githubusercontent.com/yashiro-bot/-app/main/version.json'; } catch(e) { return ''; }
   })();
@@ -87,13 +88,32 @@
     } catch(e) { alert(msg); }
   };
 
-  // ───── 启动时请求定位权限 ─────
+  // ───── 启动时请求定位权限（多重触发） ─────
   (function(){
-    if (typeof navigator === 'undefined' || !navigator.geolocation) return;
-    // 静默触发权限对话框（结果不重要，只是让系统弹窗）
-    navigator.geolocation.getCurrentPosition(function(){}, function(){}, {
-      enableHighAccuracy: true, timeout: 5000, maximumAge: 0
-    });
+    var tried = 0, maxTries = 5;
+    function tryLocation() {
+      tried++;
+      // 方式1：浏览器原生 API → 触发 WebView onGeolocationPermissionsShowPrompt
+      if (typeof navigator !== 'undefined' && navigator.geolocation) {
+        navigator.geolocation.getCurrentPosition(
+          function(pos) { debugLog('Location OK via browser API'); },
+          function(err) { debugLog('Location fail: ' + err.message); },
+          { enableHighAccuracy: true, timeout: 8000, maximumAge: 0 }
+        );
+      }
+      // 方式2：直接调原生桥（若存在）
+      if (window.UniAppBridge && typeof window.UniAppBridge.getLocation === 'function') {
+        try {
+          window.UniAppBridge.getLocation(
+            JSON.stringify({callbackId:'loc_perm_'+tried}),
+            JSON.stringify({callbackId:'loc_perm_'+tried+'_fail'})
+          );
+        } catch(e) { /* ignore */ }
+      }
+      if (tried < maxTries) setTimeout(tryLocation, 2000);
+    }
+    // 第一次立即执行，后续每2秒重试，共5次
+    setTimeout(tryLocation, 500);
   })();
 
   // Force viewport meta (backup for document.write in HTML)
@@ -2677,7 +2697,7 @@ var _pageWrapperEl = null;
                 '  </div>',
                 '  <button id="__profile_switch" style="width:100%;padding:14px;background:#f0f7ff;color:#1989fa;border:1px solid #1989fa;border-radius:10px;font-size:16px;font-weight:600;cursor:pointer;margin-bottom:12px;display:flex;align-items:center;justify-content:center;gap:6px">切换账号</button>',
                 '  <button id="__profile_update" style="width:100%;padding:14px;background:#e8f5e9;color:#2e7d32;border:1px solid #2e7d32;border-radius:10px;font-size:16px;font-weight:600;cursor:pointer;margin-bottom:12px;display:flex;align-items:center;justify-content:center;gap:6px">检查更新</button>',
-                '  <div style="text-align:center;font-size:12px;color:#aaa;margin-bottom:14px">当前版本 ' + (window.__appVersion ? window.__appVersion.name : '') + '</div>',
+                '  <div style="text-align:center;font-size:12px;color:#aaa;margin-bottom:14px">' + (window.__appDisplay || '鹭茄记 V1.0.0') + '</div>',
                 '  <button id="__profile_logout" style="width:100%;padding:14px;background:#ffebee;color:#d32f2f;border:none;border-radius:10px;font-size:16px;font-weight:600;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:6px">退出登录</button>',
                 '</div>'
               ].join('');
@@ -2735,6 +2755,17 @@ var _pageWrapperEl = null;
               if (path === 'pages/login/index') {
                 if (tabBar) tabBar.style.display = 'none';
                 document.body.style.paddingBottom = '0';
+                // 登陆页面底部显示版本号
+                setTimeout(function(){
+                  var el = document.getElementById('__login_version');
+                  if (!el) {
+                    el = document.createElement('div');
+                    el.id = '__login_version';
+                    el.style.cssText = 'position:fixed;bottom:20px;left:0;right:0;text-align:center;font-size:13px;color:#aaa;z-index:99999;pointer-events:none';
+                    document.body.appendChild(el);
+                  }
+                  el.textContent = window.__appDisplay || '鹭茄记 V1.0.0';
+                }, 1000);
               } else {
                 if (tabBar) tabBar.style.display = 'flex';
                 document.body.style.paddingBottom = '56px';
