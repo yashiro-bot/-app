@@ -44,10 +44,10 @@
     debugLog(msg, true);
   }, true);
 
-  debugLog('Shim v17 starting (script-tag injection)...');
+  debugLog('Shim v18 starting (script-tag injection)...');
 
   // ───── App 版本 & 更新配置 ─────
-  window.__appVersion = { code: 112, name: '1.1.2' };
+  window.__appVersion = { code: 113, name: '1.1.3' };
   window.__appDisplay = '鹭茄记 V' + window.__appVersion.name;
   window.__updateUrl = (function(){
     try { return localStorage.getItem('cigar:update_url') || 'https://raw.githubusercontent.com/yashiro-bot/-app/main/version.json'; } catch(e) { return ''; }
@@ -96,26 +96,41 @@
     } catch(e) { debugLog('_uniModal DOM fallback failed: ' + e.message, true); }
   }
 
-  // ───── 打开 URL（多路回退：intent直接导航→plus.runtime→uni→UniAppBridge→window.open） ─────
+  // ───── 打开 URL（多路回退） ─────
   function _openUrl(url, debugLabel) {
     debugLog('openUrl(' + debugLabel + '): ' + url);
-    // 方案A：intent:// 必须直接 window.location.href（其他方式无法触发 WebView 原生 shouldOverrideUrlLoading）
-    if (url.indexOf('intent://') === 0) {
+    var isIntent = url.indexOf('intent://') === 0;
+
+    // intent:// 特殊处理：不能用 location.href（会触发 ERR_UNKNOWN_URL_SCHEME 错误页）
+    if (isIntent) {
+      // 方式A：window.open 新窗口（不影响当前页面）
       try {
-        debugLog('intent URL via location.href');
-        window.location.href = url;
+        window.open(url, '_blank');
+        debugLog('intent via window.open');
         return true;
-      } catch(e) { debugLog('intent location.href error: ' + e.message); }
-      // 退路：创建并点击隐藏链接
+      } catch(e) { debugLog('intent window.open error: ' + e.message); }
+      // 方式B：隐藏 <a> 点击
       try {
         var a = document.createElement('a');
-        a.href = url; a.style.display = 'none';
+        a.href = url; a.target = '_blank'; a.style.display = 'none';
         document.body.appendChild(a); a.click(); a.remove();
-        debugLog('intent via hidden <a> click');
+        debugLog('intent via <a> click');
         return true;
-      } catch(e) { debugLog('intent <a> click error: ' + e.message); }
+      } catch(e) { debugLog('intent <a> error: ' + e.message); }
+      // 方式C：UniAppBridge
+      try {
+        if (window.UniAppBridge && window.UniAppBridge.openURL) {
+          window.UniAppBridge.openURL(url);
+          debugLog('intent via UniAppBridge');
+          return true;
+        }
+      } catch(e) { debugLog('intent UniAppBridge error: ' + e.message); }
+      debugLog('All intent methods failed');
+      return false;
     }
-    // 方案B：plus.runtime.openURL（打开系统浏览器下载）
+
+    // 普通 URL（http/https/APK 下载）
+    // 方案A：plus.runtime.openURL
     try {
       if (typeof plus !== 'undefined' && plus.runtime && plus.runtime.openURL) {
         plus.runtime.openURL(url);
@@ -123,7 +138,7 @@
         return true;
       }
     } catch(e) { debugLog('plus.runtime error: ' + e.message); }
-    // 方案C：uni.downloadFile（APK 下载专用）
+    // 方案B：uni.downloadFile
     try {
       if (typeof uni !== 'undefined' && uni.downloadFile && url.endsWith('.apk')) {
         uni.downloadFile({
@@ -134,7 +149,7 @@
         return true;
       }
     } catch(e) { debugLog('uni.downloadFile error: ' + e.message); }
-    // 方案D：UniAppBridge.openURL
+    // 方案C：UniAppBridge.openURL
     try {
       if (window.UniAppBridge && window.UniAppBridge.openURL) {
         window.UniAppBridge.openURL(url);
@@ -142,13 +157,13 @@
         return true;
       }
     } catch(e) { debugLog('UniAppBridge error: ' + e.message); }
-    // 方案E：window.open
+    // 方案D：window.open
     try {
       window.open(url, '_blank');
       debugLog('window.open OK');
       return true;
     } catch(e) { debugLog('window.open error: ' + e.message); }
-    // 方案F：直接导航（对 APK 链接最可能触发 Android 系统下载管理器）
+    // 方案E：location.href 直接导航（对 APK 下载可能触发系统下载管理器）
     try {
       window.location.href = url;
       debugLog('location.href OK');
