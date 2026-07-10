@@ -44,107 +44,136 @@
     debugLog(msg, true);
   }, true);
 
-  debugLog('Shim v8 starting (script-tag injection)...');
+  debugLog('Shim v9 starting (script-tag injection)...');
 
   // ───── App 版本 & 更新配置 ─────
-  window.__appVersion = { code: 103, name: '1.0.3' };
+  window.__appVersion = { code: 104, name: '1.0.4' };
   window.__appDisplay = '鹭茄记 V' + window.__appVersion.name;
   window.__updateUrl = (function(){
     try { return localStorage.getItem('cigar:update_url') || 'https://raw.githubusercontent.com/yashiro-bot/-app/main/version.json'; } catch(e) { return ''; }
   })();
 
-  // ───── 可靠弹窗（不用 confirm/alert，在 WebView 中稳定工作） ─────
-  function __showModal(opts) {
-    var existing = document.getElementById('__cc_modal');
-    if (existing) existing.remove();
-    var bg = document.createElement('div');
-    bg.id = '__cc_modal';
-    bg.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.45);z-index:999999;display:flex;align-items:center;justify-content:center;animation:fadeIn 0.12s ease';
-    bg.onclick = function(e) { if (e.target === bg) { bg.remove(); if (opts.onCancel) opts.onCancel(); } };
-    var box = document.createElement('div');
-    box.style.cssText = 'background:#fff;border-radius:14px;width:300px;max-width:85vw;padding:24px 20px 16px;box-shadow:0 8px 30px rgba(0,0,0,0.2);text-align:center';
-    if (opts.title) {
-      var title = document.createElement('div');
-      title.style.cssText = 'font-size:17px;font-weight:700;color:#222;margin-bottom:10px';
-      title.textContent = opts.title;
-      box.appendChild(title);
-    }
-    var msg = document.createElement('div');
-    msg.style.cssText = 'font-size:15px;color:#555;line-height:1.5;margin-bottom:20px;white-space:pre-wrap';
-    msg.textContent = opts.message || '';
-    box.appendChild(msg);
-    var btnRow = document.createElement('div');
-    btnRow.style.cssText = 'display:flex;gap:10px;justify-content:center';
-    if (opts.showCancel !== false) {
-      var cancelBtn = document.createElement('button');
-      cancelBtn.textContent = opts.cancelText || '取消';
-      cancelBtn.style.cssText = 'flex:1;padding:10px;border:1px solid #ddd;border-radius:8px;background:#fff;font-size:15px;color:#666;cursor:pointer';
-      cancelBtn.onclick = function() { bg.remove(); if (opts.onCancel) opts.onCancel(); };
-      btnRow.appendChild(cancelBtn);
-    }
-    var okBtn = document.createElement('button');
-    okBtn.textContent = opts.okText || '确定';
-    okBtn.style.cssText = 'flex:1;padding:10px;border:none;border-radius:8px;background:#1989fa;font-size:15px;color:#fff;font-weight:600;cursor:pointer';
-    okBtn.onclick = function() { bg.remove(); if (opts.onOk) opts.onOk(); };
-    btnRow.appendChild(okBtn);
-    box.appendChild(btnRow);
-    bg.appendChild(box);
-    document.body.appendChild(bg);
+  // ───── 诊断 Toast（不依赖 DOM，优先用 uni 桥，退路 DOM） ─────
+  function _uniToast(msg) {
+    try { if (typeof uni !== 'undefined' && uni.showToast) { uni.showToast({ title: msg, icon: 'none', duration: 3000 }); return; } } catch(e) {}
+    try { if (typeof plus !== 'undefined' && plus.nativeUI) { plus.nativeUI.toast(msg); return; } } catch(e) {}
+    // DOM 退路：插到 #app 里面而非 body
+    try {
+      var t = document.createElement('div');
+      t.style.cssText = 'position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);background:rgba(0,0,0,0.82);color:#fff;padding:14px 28px;border-radius:10px;font-size:15px;z-index:999999;max-width:80vw;text-align:center;pointer-events:none';
+      t.textContent = msg;
+      (document.getElementById('app') || document.body).appendChild(t);
+      setTimeout(function(){ t.style.transition='opacity 0.3s'; t.style.opacity='0'; setTimeout(function(){ t.remove(); }, 350); }, 2200);
+    } catch(e) { try { console.log('[TOAST] ' + msg); } catch(e2) {} }
   }
-  window.__showToast = function(msg) {
-    var t = document.createElement('div');
-    t.style.cssText = 'position:fixed;bottom:80px;left:50%;transform:translateX(-50%);background:rgba(0,0,0,0.78);color:#fff;padding:10px 22px;border-radius:8px;font-size:14px;z-index:999999;max-width:85vw;text-align:center;animation:fadeIn 0.15s ease';
-    t.textContent = msg;
-    document.body.appendChild(t);
-    setTimeout(function() { t.style.transition = 'opacity 0.3s'; t.style.opacity = '0'; setTimeout(function(){ t.remove(); }, 350); }, 2000);
-  };
+  // ───── 诊断 Modal（不依赖 confirm/alert） ─────
+  function _uniModal(title, msg, okCb, cancelCb) {
+    try {
+      if (typeof uni !== 'undefined' && uni.showModal) {
+        uni.showModal({ title: title || '', content: msg || '', showCancel: !!cancelCb, success: function(res) { if (res.confirm) okCb && okCb(); else cancelCb && cancelCb(); } });
+        return;
+      }
+    } catch(e) {}
+    // DOM 退路
+    try {
+      var old = document.getElementById('_ccm'); if (old) old.remove();
+      var bg = document.createElement('div'); bg.id = '_ccm';
+      bg.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.45);z-index:999999;display:flex;align-items:center;justify-content:center';
+      bg.onclick = function(e) { if (e.target === bg) { bg.remove(); cancelCb && cancelCb(); } };
+      var box = document.createElement('div');
+      box.style.cssText = 'background:#fff;border-radius:14px;width:300px;max-width:85vw;padding:24px 20px 16px;box-shadow:0 8px 30px rgba(0,0,0,0.2);text-align:center';
+      if (title) { var titleEl = document.createElement('div'); titleEl.style.cssText = 'font-size:17px;font-weight:700;color:#222;margin-bottom:10px'; titleEl.textContent = title; box.appendChild(titleEl); }
+      if (msg) { var msgEl = document.createElement('div'); msgEl.style.cssText = 'font-size:15px;color:#555;line-height:1.5;margin-bottom:20px;white-space:pre-wrap'; msgEl.textContent = msg; box.appendChild(msgEl); }
+      var br = document.createElement('div'); br.style.cssText = 'display:flex;gap:10px;justify-content:center';
+      if (cancelCb) {
+        var cb = document.createElement('button'); cb.textContent = '取消'; cb.style.cssText = 'flex:1;padding:10px;border:1px solid #ddd;border-radius:8px;background:#fff;font-size:15px;color:#666;cursor:pointer';
+        cb.onclick = function() { bg.remove(); cancelCb(); }; br.appendChild(cb);
+      }
+      var ob = document.createElement('button'); ob.textContent = '确定'; ob.style.cssText = 'flex:1;padding:10px;border:none;border-radius:8px;background:#1989fa;font-size:15px;color:#fff;font-weight:600;cursor:pointer';
+      ob.onclick = function() { bg.remove(); okCb && okCb(); }; br.appendChild(ob);
+      box.appendChild(br); bg.appendChild(box);
+      (document.getElementById('app') || document.body).appendChild(bg);
+    } catch(e) { debugLog('_uniModal DOM fallback failed: ' + e.message, true); }
+  }
 
-  // ───── 检查更新（使用 fetch，退路 XHR） ─────
+  // ───── 检查更新（优先 uni.request 桥，退路 fetch，再退路 XHR） ─────
   window.__checkUpdate = function(silent) {
     var url = window.__updateUrl;
-    if (!url) { if (!silent) window.__showToast('未配置更新地址'); return; }
+    debugLog('__checkUpdate called, silent=' + silent + ', url=' + url);
+    if (!url) { if (!silent) _uniToast('未配置更新地址'); return; }
     var cur = window.__appVersion;
     var done = function(info) {
       try {
+        debugLog('Update check response: versionCode=' + info.versionCode + ', cur=' + cur.code);
         if (info.versionCode > cur.code) {
-          __showModal({
-            title: '发现新版本 ' + info.versionName,
-            message: info.note || '',
-            okText: '下载更新',
-            cancelText: '稍后',
-            onOk: function() {
-              if (window.UniAppBridge && window.UniAppBridge.openURL) {
-                window.UniAppBridge.openURL(info.apkUrl);
-              } else {
-                window.open(info.apkUrl, '_blank');
-              }
+          _uniModal('发现新版本 ' + info.versionName, info.note || '', function() {
+            var apkUrl = info.apkUrl;
+            debugLog('User clicked download: ' + apkUrl);
+            if (window.UniAppBridge && window.UniAppBridge.openURL) {
+              window.UniAppBridge.openURL(apkUrl);
+            } else {
+              window.open(apkUrl, '_blank');
             }
-          });
-        } else if (!silent) {
-          window.__showToast('已是最新版 (' + cur.name + ')');
+          }, function() { debugLog('User cancelled update'); });
+        } else {
+          if (!silent) _uniToast('已是最新版 (' + cur.name + ')');
+          else debugLog('Already latest, silent mode');
         }
-      } catch(e) { if (!silent) window.__showToast('版本检查失败'); }
+      } catch(e) {
+        debugLog('Update done handler error: ' + e.message, true);
+        if (!silent) _uniToast('版本检查失败');
+      }
     };
-    var fail = function() { if (!silent) window.__showToast('网络错误，无法检查更新'); };
+    var fail = function(reason) {
+      debugLog('Update fetch failed: ' + (reason || 'unknown'), true);
+      if (!silent) _uniToast('网络错误，无法检查更新');
+    };
 
-    // 优先 fetch（比 XHR 更可靠）
-    if (typeof fetch !== 'undefined') {
-      fetch(url, { method: 'GET', cache: 'no-cache', mode: 'cors' })
-        .then(function(r){ return r.json(); })
-        .then(done)
-        .catch(fail);
-    } else {
-      // 退路 XHR
+    // 方案A：uni.request（UniApp 原生网络请求，无 CORS 限制）
+    if (typeof uni !== 'undefined' && uni.request) {
       try {
-        var xhr = new XMLHttpRequest();
-        xhr.open('GET', url, true);
-        xhr.onload = function() { try { done(JSON.parse(xhr.responseText)); } catch(e) { fail(); } };
-        xhr.onerror = fail;
-        xhr.send();
-      } catch(e) { fail(); }
+        debugLog('Attempt uni.request...');
+        uni.request({
+          url: url,
+          method: 'GET',
+          dataType: 'json',
+          success: function(res) { done(res.data); },
+          fail: function(err) { fail(err && (err.errMsg || JSON.stringify(err))); }
+        });
+        return;
+      } catch(e) { debugLog('uni.request threw: ' + e.message, true); }
     }
+    // 方案B：fetch（标准 Web API）
+    if (typeof fetch !== 'undefined') {
+      try {
+        debugLog('Attempt fetch...');
+        fetch(url, { method: 'GET', cache: 'no-cache' })
+          .then(function(r) {
+            debugLog('fetch status=' + r.status);
+            if (!r.ok) throw new Error('HTTP ' + r.status);
+            return r.json();
+          })
+          .then(done)
+          .catch(function(e) { fail(e.message); });
+        return;
+      } catch(e) { debugLog('fetch threw: ' + e.message, true); }
+    }
+    // 方案C：XHR 最终退路
+    try {
+      debugLog('Attempt XHR...');
+      var xhr = new XMLHttpRequest();
+      xhr.open('GET', url, true);
+      xhr.onload = function() {
+        debugLog('XHR status=' + xhr.status);
+        try { done(JSON.parse(xhr.responseText)); } catch(e) { fail('JSON parse error: ' + xhr.responseText.substring(0,100)); }
+      };
+      xhr.onerror = function() { fail('XHR network error'); };
+      xhr.ontimeout = function() { fail('XHR timeout'); };
+      xhr.timeout = 15000;
+      xhr.send();
+    } catch(e) { fail('XHR throw: ' + e.message); }
   };
-  window.__updateToast = window.__showToast;
+  window.__showToast = _uniToast;
 
   // ───── 启动时请求定位权限（4路触发） ─────
   window.__locationDenied = false;
@@ -180,16 +209,35 @@
 
   // ───── 打开系统定位/应用权限设置 ─────
   window.__openLocationSettings = function() {
-    try {
-      // 方式A：intent URL（Android 原生处理）
-      window.location.href = 'intent://com.cigar.collection/#Intent;action=android.settings.APPLICATION_DETAILS_SETTINGS;S:package=com.cigar.collection;end';
-    } catch(e) { /* ignore */ }
-    // 方式B：如果 window.open 可用
+    debugLog('__openLocationSettings clicked');
+    // 方式A：启动原生 intent（某些 UniApp 构建支持）
     try {
       if (window.UniAppBridge && window.UniAppBridge.openURL) {
         window.UniAppBridge.openURL('intent://com.cigar.collection/#Intent;action=android.settings.APPLICATION_DETAILS_SETTINGS;S:package=com.cigar.collection;end');
+        debugLog('Called UniAppBridge.openURL with intent');
+        return;
       }
-    } catch(e) { /* ignore */ }
+    } catch(e) { debugLog('UniAppBridge.openURL error: ' + e.message, true); }
+    // 方式B：用 uni.openLocation
+    try {
+      if (typeof uni !== 'undefined') {
+        if (uni.openLocation) {
+          uni.openLocation({ latitude: 0, longitude: 0 });
+          return;
+        }
+        // uni 里跳应用系统设置
+        if (uni.openSetting) {
+          uni.openSetting({ success: function(r) { debugLog('openSetting result: ' + JSON.stringify(r)); } });
+          return;
+        }
+      }
+    } catch(e) { debugLog('uni location setting error: ' + e.message, true); }
+    // 方式C：弹出操作指南对话框
+    _uniModal(
+      '定位权限设置',
+      '请手动开启定位：\n1. 打开手机「系统设置」\n2. 进入「应用管理」→「雪茄采集」\n3. 点击「权限」→ 开启「位置信息」\n\n开启后返回本应用即可使用。',
+      null, null
+    );
   };
 
   // Force viewport meta (backup for document.write in HTML)

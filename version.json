@@ -1,6 +1,6 @@
 {
-  "versionCode": 103,
-  "versionName": "1.0.3",
-  "apkUrl": "https://github.com/yashiro-bot/-app/releases/download/v1.0.3/V1.0.3.apk",
-  "note": "修复检查更新无反应(自定义模态弹窗+fetch)，我的页面加入定位跳转按钮"
+  "versionCode": 104,
+  "versionName": "1.0.4",
+  "apkUrl": "https://github.com/yashiro-bot/-app/releases/download/v1.0.4/V1.0.4.apk",
+  "note": "修复安装失败(AndroidManifest.xml被压缩)，检查更新改用uni.request→fetch→XHR三路，定位跳转改用uni桥+操作指南"
 }
