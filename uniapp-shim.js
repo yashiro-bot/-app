@@ -47,46 +47,104 @@
   debugLog('Shim v8 starting (script-tag injection)...');
 
   // ───── App 版本 & 更新配置 ─────
-  window.__appVersion = { code: 102, name: '1.0.2' };
+  window.__appVersion = { code: 103, name: '1.0.3' };
   window.__appDisplay = '鹭茄记 V' + window.__appVersion.name;
   window.__updateUrl = (function(){
     try { return localStorage.getItem('cigar:update_url') || 'https://raw.githubusercontent.com/yashiro-bot/-app/main/version.json'; } catch(e) { return ''; }
   })();
 
-  // ───── 检查更新 ─────
+  // ───── 可靠弹窗（不用 confirm/alert，在 WebView 中稳定工作） ─────
+  function __showModal(opts) {
+    var existing = document.getElementById('__cc_modal');
+    if (existing) existing.remove();
+    var bg = document.createElement('div');
+    bg.id = '__cc_modal';
+    bg.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.45);z-index:999999;display:flex;align-items:center;justify-content:center;animation:fadeIn 0.12s ease';
+    bg.onclick = function(e) { if (e.target === bg) { bg.remove(); if (opts.onCancel) opts.onCancel(); } };
+    var box = document.createElement('div');
+    box.style.cssText = 'background:#fff;border-radius:14px;width:300px;max-width:85vw;padding:24px 20px 16px;box-shadow:0 8px 30px rgba(0,0,0,0.2);text-align:center';
+    if (opts.title) {
+      var title = document.createElement('div');
+      title.style.cssText = 'font-size:17px;font-weight:700;color:#222;margin-bottom:10px';
+      title.textContent = opts.title;
+      box.appendChild(title);
+    }
+    var msg = document.createElement('div');
+    msg.style.cssText = 'font-size:15px;color:#555;line-height:1.5;margin-bottom:20px;white-space:pre-wrap';
+    msg.textContent = opts.message || '';
+    box.appendChild(msg);
+    var btnRow = document.createElement('div');
+    btnRow.style.cssText = 'display:flex;gap:10px;justify-content:center';
+    if (opts.showCancel !== false) {
+      var cancelBtn = document.createElement('button');
+      cancelBtn.textContent = opts.cancelText || '取消';
+      cancelBtn.style.cssText = 'flex:1;padding:10px;border:1px solid #ddd;border-radius:8px;background:#fff;font-size:15px;color:#666;cursor:pointer';
+      cancelBtn.onclick = function() { bg.remove(); if (opts.onCancel) opts.onCancel(); };
+      btnRow.appendChild(cancelBtn);
+    }
+    var okBtn = document.createElement('button');
+    okBtn.textContent = opts.okText || '确定';
+    okBtn.style.cssText = 'flex:1;padding:10px;border:none;border-radius:8px;background:#1989fa;font-size:15px;color:#fff;font-weight:600;cursor:pointer';
+    okBtn.onclick = function() { bg.remove(); if (opts.onOk) opts.onOk(); };
+    btnRow.appendChild(okBtn);
+    box.appendChild(btnRow);
+    bg.appendChild(box);
+    document.body.appendChild(bg);
+  }
+  window.__showToast = function(msg) {
+    var t = document.createElement('div');
+    t.style.cssText = 'position:fixed;bottom:80px;left:50%;transform:translateX(-50%);background:rgba(0,0,0,0.78);color:#fff;padding:10px 22px;border-radius:8px;font-size:14px;z-index:999999;max-width:85vw;text-align:center;animation:fadeIn 0.15s ease';
+    t.textContent = msg;
+    document.body.appendChild(t);
+    setTimeout(function() { t.style.transition = 'opacity 0.3s'; t.style.opacity = '0'; setTimeout(function(){ t.remove(); }, 350); }, 2000);
+  };
+
+  // ───── 检查更新（使用 fetch，退路 XHR） ─────
   window.__checkUpdate = function(silent) {
     var url = window.__updateUrl;
-    if (!url) { if (!silent) window.__updateToast('未配置更新地址'); return; }
-    try {
-      var xhr = new XMLHttpRequest();
-      xhr.open('GET', url, true);
-      xhr.onload = function() {
-        try {
-          var info = JSON.parse(xhr.responseText);
-          var cur = window.__appVersion;
-          if (info.versionCode > cur.code) {
-            if (confirm('发现新版本 ' + info.versionName + '\n' + (info.note || '') + '\n\n是否下载更新？')) {
+    if (!url) { if (!silent) window.__showToast('未配置更新地址'); return; }
+    var cur = window.__appVersion;
+    var done = function(info) {
+      try {
+        if (info.versionCode > cur.code) {
+          __showModal({
+            title: '发现新版本 ' + info.versionName,
+            message: info.note || '',
+            okText: '下载更新',
+            cancelText: '稍后',
+            onOk: function() {
               if (window.UniAppBridge && window.UniAppBridge.openURL) {
                 window.UniAppBridge.openURL(info.apkUrl);
               } else {
                 window.open(info.apkUrl, '_blank');
               }
             }
-          } else if (!silent) {
-            window.__updateToast('当前已是最新版本 (' + cur.name + ')');
-          }
-        } catch(e) { if (!silent) window.__updateToast('版本检查失败'); }
-      };
-      xhr.onerror = function() { if (!silent) window.__updateToast('网络错误，无法检查更新'); };
-      xhr.send();
-    } catch(e) { if (!silent) window.__updateToast('检查更新失败'); }
+          });
+        } else if (!silent) {
+          window.__showToast('已是最新版 (' + cur.name + ')');
+        }
+      } catch(e) { if (!silent) window.__showToast('版本检查失败'); }
+    };
+    var fail = function() { if (!silent) window.__showToast('网络错误，无法检查更新'); };
+
+    // 优先 fetch（比 XHR 更可靠）
+    if (typeof fetch !== 'undefined') {
+      fetch(url, { method: 'GET', cache: 'no-cache', mode: 'cors' })
+        .then(function(r){ return r.json(); })
+        .then(done)
+        .catch(fail);
+    } else {
+      // 退路 XHR
+      try {
+        var xhr = new XMLHttpRequest();
+        xhr.open('GET', url, true);
+        xhr.onload = function() { try { done(JSON.parse(xhr.responseText)); } catch(e) { fail(); } };
+        xhr.onerror = fail;
+        xhr.send();
+      } catch(e) { fail(); }
+    }
   };
-  window.__updateToast = function(msg) {
-    try {
-      if (typeof uni !== 'undefined' && uni.showToast) uni.showToast({ title: msg, icon: 'none', duration: 2500 });
-      else alert(msg);
-    } catch(e) { alert(msg); }
-  };
+  window.__updateToast = window.__showToast;
 
   // ───── 启动时请求定位权限（4路触发） ─────
   window.__locationDenied = false;
@@ -2714,8 +2772,9 @@ var _pageWrapperEl = null;
                 '    <div style="display:flex;justify-content:space-between;font-size:14px"><span style="color:#888">角色</span><span id="__profile_role2" style="color:#333;font-weight:500"></span></div>',
                 '  </div>',
                 '  <button id="__profile_switch" style="width:100%;padding:14px;background:#f0f7ff;color:#1989fa;border:1px solid #1989fa;border-radius:10px;font-size:16px;font-weight:600;cursor:pointer;margin-bottom:12px;display:flex;align-items:center;justify-content:center;gap:6px">切换账号</button>',
-                '  <button id="__profile_update" style="width:100%;padding:14px;background:#e8f5e9;color:#2e7d32;border:1px solid #2e7d32;border-radius:10px;font-size:16px;font-weight:600;cursor:pointer;margin-bottom:12px;display:flex;align-items:center;justify-content:center;gap:6px">检查更新</button>',
-                '  <div style="text-align:center;font-size:12px;color:#aaa;margin-bottom:14px">' + (window.__appDisplay || '鹭茄记 V1.0.0') + '</div>',
+                '  <button id="__profile_update" style="width:100%;padding:14px;background:#e8f5e9;color:#2e7d32;border:1px solid #2e7d32;border-radius:10px;font-size:16px;font-weight:600;cursor:pointer;margin-bottom:8px;display:flex;align-items:center;justify-content:center;gap:6px">检查更新</button>',
+                '  <div id="__profile_version" style="text-align:center;font-size:12px;color:#aaa;margin-bottom:8px">' + (window.__appDisplay || '鹭茄记 V1.0.0') + '</div>',
+                '  <button id="__profile_location_guide" style="width:100%;padding:10px;background:#fff8e1;color:#e65100;border:1px solid #ffca28;border-radius:8px;font-size:13px;font-weight:500;cursor:pointer;margin-bottom:12px;display:flex;align-items:center;justify-content:center;gap:5px">定位未开启？点击跳转系统设置 →</button>',
                 '  <button id="__profile_logout" style="width:100%;padding:14px;background:#ffebee;color:#d32f2f;border:none;border-radius:10px;font-size:16px;font-weight:600;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:6px">退出登录</button>',
                 '</div>'
               ].join('');
@@ -2727,6 +2786,7 @@ var _pageWrapperEl = null;
               document.getElementById('__profile_close').onclick = closeProfilePanel;
               document.getElementById('__profile_switch').onclick = function() { showSwitchAccount(); };
               document.getElementById('__profile_update').onclick = function() { window.__checkUpdate(false); };
+      document.getElementById('__profile_location_guide').onclick = function() { window.__openLocationSettings && window.__openLocationSettings(); };
               document.getElementById('__profile_logout').onclick = function() {
                 // Clear auth
                 try { localStorage.removeItem('cigar:token'); localStorage.removeItem('cigar:user'); } catch(e) {}

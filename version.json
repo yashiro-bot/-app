@@ -1,6 +1,6 @@
 {
-  "versionCode": 102,
-  "versionName": "1.0.2",
-  "apkUrl": "https://github.com/yashiro-bot/-app/releases/download/v1.0.2/V1.0.2.apk",
-  "note": "修复登录页V6.16旧版号，4路触发定位权限申请"
+  "versionCode": 103,
+  "versionName": "1.0.3",
+  "apkUrl": "https://github.com/yashiro-bot/-app/releases/download/v1.0.3/V1.0.3.apk",
+  "note": "修复检查更新无反应(自定义模态弹窗+fetch)，我的页面加入定位跳转按钮"
 }
