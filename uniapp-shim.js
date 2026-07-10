@@ -44,10 +44,10 @@
     debugLog(msg, true);
   }, true);
 
-  debugLog('Shim v20 starting (script-tag injection)...');
+  debugLog('Shim v21 starting (script-tag injection)...');
 
   // ───── App 版本 & 更新配置 ─────
-  window.__appVersion = { code: 115, name: '1.1.5' };
+  window.__appVersion = { code: 116, name: '1.1.6' };
   window.__appDisplay = '鹭茄记 V' + window.__appVersion.name;
   window.__updateUrl = (function(){
     try { return localStorage.getItem('cigar:update_url') || 'https://raw.githubusercontent.com/yashiro-bot/-app/main/version.json'; } catch(e) { return ''; }
@@ -96,41 +96,19 @@
     } catch(e) { debugLog('_uniModal DOM fallback failed: ' + e.message, true); }
   }
 
-  // ───── 打开 URL（多路回退） ─────
+  // ───── 打开 URL（多路回退：plus.runtime → window.open(_system) → location.href → 复制到剪贴板 → 显示链接） ─────
   function _openUrl(url, debugLabel) {
     debugLog('openUrl(' + debugLabel + '): ' + url);
     var isIntent = url.indexOf('intent://') === 0;
 
-    // intent:// 特殊处理：不能用 location.href（会触发 ERR_UNKNOWN_URL_SCHEME 错误页）
+    // intent:// 完全无法处理（WebView 不识别此协议，所有尝试都会触发 ERR_UNKNOWN_URL_SCHEME）
     if (isIntent) {
-      // 方式A：window.open 新窗口（不影响当前页面）
-      try {
-        window.open(url, '_blank');
-        debugLog('intent via window.open');
-        return true;
-      } catch(e) { debugLog('intent window.open error: ' + e.message); }
-      // 方式B：隐藏 <a> 点击
-      try {
-        var a = document.createElement('a');
-        a.href = url; a.target = '_blank'; a.style.display = 'none';
-        document.body.appendChild(a); a.click(); a.remove();
-        debugLog('intent via <a> click');
-        return true;
-      } catch(e) { debugLog('intent <a> error: ' + e.message); }
-      // 方式C：UniAppBridge
-      try {
-        if (window.UniAppBridge && window.UniAppBridge.openURL) {
-          window.UniAppBridge.openURL(url);
-          debugLog('intent via UniAppBridge');
-          return true;
-        }
-      } catch(e) { debugLog('intent UniAppBridge error: ' + e.message); }
-      debugLog('All intent methods failed');
+      debugLog('intent:// not supported, skipping URL navigation');
+      _showUrlForCopy(url, 'intent 协议不支持，请手动设置：');
       return false;
     }
 
     // 普通 URL（http/https/APK 下载）
-    // 方案A：plus.runtime.openURL
     try {
       if (typeof plus !== 'undefined' && plus.runtime && plus.runtime.openURL) {
         plus.runtime.openURL(url);
@@ -138,7 +116,6 @@
         return true;
       }
     } catch(e) { debugLog('plus.runtime error: ' + e.message); }
-    // 方案B：uni.downloadFile
     try {
       if (typeof uni !== 'undefined' && uni.downloadFile && url.endsWith('.apk')) {
         uni.downloadFile({
@@ -149,7 +126,6 @@
         return true;
       }
     } catch(e) { debugLog('uni.downloadFile error: ' + e.message); }
-    // 方案C：UniAppBridge.openURL
     try {
       if (window.UniAppBridge && window.UniAppBridge.openURL) {
         window.UniAppBridge.openURL(url);
@@ -157,19 +133,78 @@
         return true;
       }
     } catch(e) { debugLog('UniAppBridge error: ' + e.message); }
-    // 方案D：window.open
     try {
-      window.open(url, '_blank');
-      debugLog('window.open OK');
+      window.open(url, '_system');
+      debugLog('window.open _system OK');
       return true;
     } catch(e) { debugLog('window.open error: ' + e.message); }
-    // 方案E：location.href 直接导航（对 APK 下载可能触发系统下载管理器）
     try {
       window.location.href = url;
       debugLog('location.href OK');
       return true;
     } catch(e) { debugLog('location.href error: ' + e.message); }
+    // 最终退路：显示链接让用户复制
+    debugLog('All URL open methods failed, showing URL for manual copy');
+    _showUrlForCopy(url, '无法自动打开，请复制下方链接到浏览器：');
     return false;
+  }
+
+  // 显示链接到屏幕中央，让用户长按复制
+  function _showUrlForCopy(url, msg) {
+    try {
+      var existing = document.getElementById('__url_copy_overlay');
+      if (existing) existing.remove();
+      var overlay = document.createElement('div');
+      overlay.id = '__url_copy_overlay';
+      overlay.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.7);z-index:99999;display:flex;align-items:center;justify-content:center;padding:20px;box-sizing:border-box';
+      var card = document.createElement('div');
+      card.style.cssText = 'background:#fff;border-radius:12px;padding:20px;max-width:90%;width:100%;box-shadow:0 4px 20px rgba(0,0,0,0.3)';
+      var title = document.createElement('div');
+      title.textContent = msg;
+      title.style.cssText = 'font-size:15px;color:#333;margin-bottom:12px;font-weight:600;text-align:center';
+      card.appendChild(title);
+      var urlBox = document.createElement('div');
+      urlBox.textContent = url;
+      urlBox.style.cssText = 'background:#f5f6fa;padding:12px;border-radius:8px;font-size:12px;color:#1989fa;word-break:break-all;line-height:1.5;margin-bottom:12px;border:1px solid #ddd;-webkit-user-select:text;user-select:text';
+      card.appendChild(urlBox);
+      var hint = document.createElement('div');
+      hint.textContent = '长按上方链接可复制';
+      hint.style.cssText = 'font-size:12px;color:#999;text-align:center;margin-bottom:16px';
+      card.appendChild(hint);
+      // 尝试复制到剪贴板
+      var copyBtn = document.createElement('button');
+      copyBtn.textContent = '复制链接';
+      copyBtn.style.cssText = 'width:100%;padding:12px;background:#1989fa;color:#fff;border:none;border-radius:8px;font-size:15px;font-weight:600;cursor:pointer;margin-bottom:8px';
+      copyBtn.onclick = function() {
+        var ok = false;
+        try {
+          if (navigator.clipboard && navigator.clipboard.writeText) {
+            navigator.clipboard.writeText(url);
+            ok = true;
+          }
+        } catch(e) {}
+        if (!ok) {
+          try {
+            var ta = document.createElement('textarea');
+            ta.value = url; ta.style.position = 'fixed'; ta.style.opacity = '0';
+            document.body.appendChild(ta); ta.select(); ta.setSelectionRange(0, 99999);
+            document.execCommand('copy'); ta.remove();
+            ok = true;
+          } catch(e) {}
+        }
+        copyBtn.textContent = ok ? '✓ 已复制' : '复制失败，请手动复制';
+        copyBtn.style.background = ok ? '#2e7d32' : '#d32f2f';
+        setTimeout(function() { overlay.remove(); }, 1500);
+      };
+      card.appendChild(copyBtn);
+      var closeBtn = document.createElement('button');
+      closeBtn.textContent = '关闭';
+      closeBtn.style.cssText = 'width:100%;padding:10px;background:#f5f6fa;color:#666;border:none;border-radius:8px;font-size:14px;cursor:pointer';
+      closeBtn.onclick = function() { overlay.remove(); };
+      card.appendChild(closeBtn);
+      overlay.appendChild(card);
+      document.body.appendChild(overlay);
+    } catch(e) { debugLog('_showUrlForCopy error: ' + e.message, true); }
   }
   window.__checkUpdate = function(silent) {
     var url = window.__updateUrl;
@@ -3011,7 +3046,7 @@ var _pageWrapperEl = null;
                 '  <button id="__profile_switch" style="width:100%;padding:14px;background:#f0f7ff;color:#1989fa;border:1px solid #1989fa;border-radius:10px;font-size:16px;font-weight:600;cursor:pointer;margin-bottom:12px;display:flex;align-items:center;justify-content:center;gap:6px">切换账号</button>',
                 '  <button id="__profile_update" style="width:100%;padding:14px;background:#e8f5e9;color:#2e7d32;border:1px solid #2e7d32;border-radius:10px;font-size:16px;font-weight:600;cursor:pointer;margin-bottom:8px;display:flex;align-items:center;justify-content:center;gap:6px">检查更新</button>',
                 '  <div id="__profile_version" style="text-align:center;font-size:12px;color:#aaa;margin-bottom:8px">' + (window.__appDisplay || '鹭茄记 V1.0.0') + '</div>',
-                '  <button id="__profile_location_guide" style="width:100%;padding:10px;background:#fff8e1;color:#e65100;border:1px solid #ffca28;border-radius:8px;font-size:13px;font-weight:500;cursor:pointer;margin-bottom:12px;display:flex;align-items:center;justify-content:center;gap:5px">定位未开启？点击跳转系统设置 →</button>',
+                '  <div id="__profile_location_guide" style="width:100%;padding:10px;background:#fff8e1;color:#e65100;border:1px solid #ffca28;border-radius:8px;font-size:12px;font-weight:500;margin-bottom:12px;text-align:center;line-height:1.5;display:none"></div>',
                 '  <button id="__profile_logout" style="width:100%;padding:14px;background:#ffebee;color:#d32f2f;border:none;border-radius:10px;font-size:16px;font-weight:600;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:6px">退出登录</button>',
                 '</div>'
               ].join('');
@@ -3023,7 +3058,22 @@ var _pageWrapperEl = null;
               document.getElementById('__profile_close').onclick = closeProfilePanel;
               document.getElementById('__profile_switch').onclick = function() { showSwitchAccount(); };
               document.getElementById('__profile_update').onclick = function() { window.__checkUpdate(false); };
-      document.getElementById('__profile_location_guide').onclick = function() { window.__openLocationSettings && window.__openLocationSettings(); };
+
+              // 定位权限提示：根据 __locationDenied 自动显示/隐藏
+              (function(){
+                var locDiv = document.getElementById('__profile_location_guide');
+                if (!locDiv) return;
+                if (window.__locationDenied === true) {
+                  locDiv.innerHTML = '⚠ 定位权限未开启<br><span style="font-size:11px;color:#bf360c">设置 → 应用管理 → 鹭茄记 → 权限 → 位置信息—允许精确定位—</span>';
+                  locDiv.style.display = 'block';
+                } else {
+                  locDiv.innerHTML = '✓ 定位权限已开启';
+                  locDiv.style.background = '#e8f5e9';
+                  locDiv.style.color = '#2e7d32';
+                  locDiv.style.borderColor = '#a5d6a7';
+                  locDiv.style.display = 'block';
+                }
+              })();
               document.getElementById('__profile_logout').onclick = function() {
                 // Clear auth
                 try { localStorage.removeItem('cigar:token'); localStorage.removeItem('cigar:user'); } catch(e) {}
