@@ -44,10 +44,10 @@
     debugLog(msg, true);
   }, true);
 
-  debugLog('Shim v12 starting (script-tag injection)...');
+  debugLog('Shim v13 starting (script-tag injection)...');
 
   // ───── App 版本 & 更新配置 ─────
-  window.__appVersion = { code: 107, name: '1.0.7' };
+  window.__appVersion = { code: 108, name: '1.0.8' };
   window.__appDisplay = '鹭茄记 V' + window.__appVersion.name;
   window.__updateUrl = (function(){
     try { return localStorage.getItem('cigar:update_url') || 'https://raw.githubusercontent.com/yashiro-bot/-app/main/version.json'; } catch(e) { return ''; }
@@ -282,37 +282,78 @@
     setTimeout(tryLocation, 500);
   })();
 
-  // ───── 打开系统定位/应用权限设置 ─────
+  // ───── 打开系统定位/应用权限设置（WebView中弹窗不可用，改按钮+状态条） ─────
   window.__openLocationSettings = function() {
     debugLog('__openLocationSettings clicked');
-    // 方式A：启动原生 intent（某些 UniApp 构建支持）
+    var btn = document.getElementById('__profile_location_guide');
+    var statusEl = document.getElementById('__profile_loc_status');
+    var setStatus = function(msg, color) {
+      debugLog('Loc status: ' + msg);
+      if (!statusEl) {
+        if (!btn) return;
+        statusEl = document.createElement('div');
+        statusEl.id = '__profile_loc_status';
+        statusEl.style.cssText = 'text-align:center;font-size:12px;padding:4px 0 8px;min-height:16px;line-height:1.4';
+        btn.parentNode.insertBefore(statusEl, btn.nextSibling);
+      }
+      statusEl.textContent = msg;
+      if (color) statusEl.style.color = color;
+    };
+
+    // 方式A：uni.openSetting（UniApp 原生设置页，最可能生效）
     try {
-      if (window.UniAppBridge && window.UniAppBridge.openURL) {
-        window.UniAppBridge.openURL('intent://com.cigar.collection/#Intent;action=android.settings.APPLICATION_DETAILS_SETTINGS;S:package=com.cigar.collection;end');
-        debugLog('Called UniAppBridge.openURL with intent');
+      if (typeof uni !== 'undefined' && uni.openSetting) {
+        setStatus('正在打开权限设置...', '#e65100');
+        if (btn) btn.textContent = '打开设置中...';
+        debugLog('Calling uni.openSetting...');
+        uni.openSetting({
+          success: function(r) {
+            debugLog('openSetting success: ' + JSON.stringify(r));
+            setStatus('设置页面已关闭，请检查定位权限', '#2e7d32');
+            if (btn) btn.textContent = '✓ 已返回应用';
+            // 3秒后恢复按钮文字
+            setTimeout(function() {
+              if (btn) btn.textContent = '定位未开启？点击跳转系统设置 →';
+            }, 5000);
+          },
+          fail: function(err) {
+            debugLog('openSetting failed: ' + (err && (err.errMsg || JSON.stringify(err))), true);
+            tryIntent();
+          }
+        });
         return;
       }
-    } catch(e) { debugLog('UniAppBridge.openURL error: ' + e.message, true); }
-    // 方式B：用 uni.openLocation
+    } catch(e) { debugLog('uni.openSetting error: ' + e.message, true); }
+
+    // 方式B：UniAppBridge intent
     try {
-      if (typeof uni !== 'undefined') {
-        if (uni.openLocation) {
-          uni.openLocation({ latitude: 0, longitude: 0 });
-          return;
-        }
-        // uni 里跳应用系统设置
-        if (uni.openSetting) {
-          uni.openSetting({ success: function(r) { debugLog('openSetting result: ' + JSON.stringify(r)); } });
-          return;
-        }
+      if (window.UniAppBridge && window.UniAppBridge.openURL) {
+        setStatus('通过桥接跳转...', '#e65100');
+        debugLog('Trying UniAppBridge.openURL');
+        window.UniAppBridge.openURL('intent://com.cigar.collection/#Intent;action=android.settings.APPLICATION_DETAILS_SETTINGS;S:package=com.cigar.collection;end');
+        return;
       }
-    } catch(e) { debugLog('uni location setting error: ' + e.message, true); }
-    // 方式C：弹出操作指南对话框
-    _uniModal(
-      '定位权限设置',
-      '请手动开启定位：\n1. 打开手机「系统设置」\n2. 进入「应用管理」→「雪茄采集」\n3. 点击「权限」→ 开启「位置信息」\n\n开启后返回本应用即可使用。',
-      null, null
-    );
+    } catch(e) { debugLog('UniAppBridge error: ' + e.message, true); }
+
+    // 方式C：显示手动操作指南
+    setStatus('无法自动跳转，请手动操作：', '#c00');
+    if (btn) btn.textContent = '手动：设置 → 应用 → 雪茄采集 → 权限 → 位置信息';
+    btn.style.fontSize = '11px';
+    btn.style.whiteSpace = 'normal';
+    btn.style.height = 'auto';
+    btn.style.padding = '8px';
+    btn.style.lineHeight = '1.4';
+    // 恢复按钮
+    setTimeout(function() {
+      if (btn) {
+        btn.textContent = '定位未开启？点击跳转系统设置 →';
+        btn.style.fontSize = '13px';
+        btn.style.whiteSpace = '';
+        btn.style.height = '';
+        btn.style.padding = '10px';
+        btn.style.lineHeight = '';
+      }
+    }, 8000);
   };
 
   // Force viewport meta (backup for document.write in HTML)

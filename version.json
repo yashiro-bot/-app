@@ -1,6 +1,6 @@
 {
-  "versionCode": 107,
-  "versionName": "1.0.7",
-  "apkUrl": "https://github.com/yashiro-bot/-app/releases/download/v1.0.7/V1.0.7.apk",
-  "note": "检查更新彻底放弃弹窗，改为按钮文字+状态条反馈，先用GitHub API(GitHub raw返回403)"
+  "versionCode": 108,
+  "versionName": "1.0.8",
+  "apkUrl": "https://github.com/yashiro-bot/-app/releases/download/v1.0.8/V1.0.8.apk",
+  "note": "定位跳转改用按钮文字+状态条反馈(弹窗不可用)，优先uni.openSetting→UniAppBridge→手动指南"
 }
