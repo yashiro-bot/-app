@@ -44,10 +44,10 @@
     debugLog(msg, true);
   }, true);
 
-  debugLog('Shim v13 starting (script-tag injection)...');
+  debugLog('Shim v14 starting (script-tag injection)...');
 
   // ───── App 版本 & 更新配置 ─────
-  window.__appVersion = { code: 108, name: '1.0.8' };
+  window.__appVersion = { code: 109, name: '1.0.9' };
   window.__appDisplay = '鹭茄记 V' + window.__appVersion.name;
   window.__updateUrl = (function(){
     try { return localStorage.getItem('cigar:update_url') || 'https://raw.githubusercontent.com/yashiro-bot/-app/main/version.json'; } catch(e) { return ''; }
@@ -96,7 +96,44 @@
     } catch(e) { debugLog('_uniModal DOM fallback failed: ' + e.message, true); }
   }
 
-  // ───── 检查更新（在 WebView中弹窗不可用，直接改按钮文字和状态条） ─────
+  // ───── 打开 URL（多路回退：plus.runtime → uni → UniAppBridge → window.open） ─────
+  function _openUrl(url, debugLabel) {
+    debugLog('openUrl(' + debugLabel + '): ' + url);
+    // 方案A：plus.runtime.openURL（最可能在 UniApp WebView 中打开系统浏览器）
+    try {
+      if (typeof plus !== 'undefined' && plus.runtime && plus.runtime.openURL) {
+        plus.runtime.openURL(url);
+        debugLog('plus.runtime.openURL OK');
+        return true;
+      }
+    } catch(e) { debugLog('plus.runtime error: ' + e.message); }
+    // 方案B：uni.downloadFile（APK 下载专用）
+    try {
+      if (typeof uni !== 'undefined' && uni.downloadFile && url.endsWith('.apk')) {
+        uni.downloadFile({
+          url: url,
+          success: function(res) { debugLog('uni.downloadFile OK: ' + (res.tempFilePath || '')); },
+          fail: function(err) { debugLog('uni.downloadFile fail: ' + (err && (err.errMsg || JSON.stringify(err)))); }
+        });
+        return true;
+      }
+    } catch(e) { debugLog('uni.downloadFile error: ' + e.message); }
+    // 方案C：UniAppBridge.openURL
+    try {
+      if (window.UniAppBridge && window.UniAppBridge.openURL) {
+        window.UniAppBridge.openURL(url);
+        debugLog('UniAppBridge.openURL OK');
+        return true;
+      }
+    } catch(e) { debugLog('UniAppBridge error: ' + e.message); }
+    // 方案D：window.open（WebView 可能拦截）
+    try {
+      window.open(url, '_blank');
+      debugLog('window.open OK');
+      return true;
+    } catch(e) { debugLog('window.open error: ' + e.message); }
+    return false;
+  }
   window.__checkUpdate = function(silent) {
     var url = window.__updateUrl;
     debugLog('__checkUpdate called, silent=' + silent + ', url=' + url + ' (len=' + (url||'').length + ')');
@@ -119,13 +156,8 @@
           var apkUrl = info.apkUrl;
           _btnStatus('发现新版本 ' + info.versionName + '！正在下载...');
           if (btn) btn.textContent = '下载更新 ' + info.versionName;
-          // 自动尝试下载
-          debugLog('Download: ' + apkUrl);
-          if (window.UniAppBridge && window.UniAppBridge.openURL) {
-            window.UniAppBridge.openURL(apkUrl);
-          } else {
-            window.open(apkUrl, '_blank');
-          }
+          // 自动尝试下载（多路回退）
+          _openUrl(apkUrl, 'APK download');
         } else if (!silent) {
           _btnStatus('已是最新版 (' + cur.name + ')', '#2e7d32');
           if (btn) btn.textContent = '✓ 已是最新版';
@@ -143,14 +175,7 @@
       _btnStatus('更新服务器不可达，请手动检查', '#c00');
       if (btn) {
         btn.textContent = '去 GitHub 查看';
-        btn.onclick = function() {
-          debugLog('Open releases: ' + releasesUrl);
-          if (window.UniAppBridge && window.UniAppBridge.openURL) {
-            window.UniAppBridge.openURL(releasesUrl);
-          } else {
-            window.open(releasesUrl, '_blank');
-          }
-        };
+        btn.onclick = function() { _openUrl(releasesUrl, 'releases page'); };
       }
     };
 
@@ -309,12 +334,9 @@
         uni.openSetting({
           success: function(r) {
             debugLog('openSetting success: ' + JSON.stringify(r));
-            setStatus('设置页面已关闭，请检查定位权限', '#2e7d32');
-            if (btn) btn.textContent = '✓ 已返回应用';
-            // 3秒后恢复按钮文字
-            setTimeout(function() {
-              if (btn) btn.textContent = '定位未开启？点击跳转系统设置 →';
-            }, 5000);
+            setStatus('已返回应用，请检查定位权限', '#2e7d32');
+            if (btn) btn.textContent = '✓ 请检查定位权限';
+            setTimeout(function() { if (btn) btn.textContent = '定位未开启？点击跳转系统设置 →'; }, 5000);
           },
           fail: function(err) {
             debugLog('openSetting failed: ' + (err && (err.errMsg || JSON.stringify(err))), true);
@@ -324,36 +346,31 @@
         return;
       }
     } catch(e) { debugLog('uni.openSetting error: ' + e.message, true); }
+    tryIntent();
 
-    // 方式B：UniAppBridge intent
-    try {
-      if (window.UniAppBridge && window.UniAppBridge.openURL) {
-        setStatus('通过桥接跳转...', '#e65100');
-        debugLog('Trying UniAppBridge.openURL');
-        window.UniAppBridge.openURL('intent://com.cigar.collection/#Intent;action=android.settings.APPLICATION_DETAILS_SETTINGS;S:package=com.cigar.collection;end');
-        return;
+    function tryIntent() {
+      setStatus('正在跳转应用设置...', '#e65100');
+      if (btn) btn.textContent = '跳转设置中...';
+      var ok = _openUrl('intent://com.cigar.collection/#Intent;action=android.settings.APPLICATION_DETAILS_SETTINGS;S:package=com.cigar.collection;end', 'location intent');
+      if (ok) {
+        setStatus('请允许定位权限后返回', '#2e7d32');
+        if (btn) btn.textContent = '✓ 已跳转设置';
+        setTimeout(function() { if (btn) btn.textContent = '定位未开启？点击跳转系统设置 →'; }, 6000);
+      } else {
+        // 方式C：显示手动操作指南
+        setStatus('无法自动跳转，请手动操作：', '#c00');
+        if (btn) {
+          btn.textContent = '手动：设置 → 应用 → 雪茄采集 → 权限 → 位置信息';
+          btn.style.fontSize = '11px'; btn.style.whiteSpace = 'normal'; btn.style.height = 'auto'; btn.style.padding = '8px'; btn.style.lineHeight = '1.4';
+        }
+        setTimeout(function() {
+          if (btn) {
+            btn.textContent = '定位未开启？点击跳转系统设置 →';
+            btn.style.fontSize = '13px'; btn.style.whiteSpace = ''; btn.style.height = ''; btn.style.padding = '10px'; btn.style.lineHeight = '';
+          }
+        }, 10000);
       }
-    } catch(e) { debugLog('UniAppBridge error: ' + e.message, true); }
-
-    // 方式C：显示手动操作指南
-    setStatus('无法自动跳转，请手动操作：', '#c00');
-    if (btn) btn.textContent = '手动：设置 → 应用 → 雪茄采集 → 权限 → 位置信息';
-    btn.style.fontSize = '11px';
-    btn.style.whiteSpace = 'normal';
-    btn.style.height = 'auto';
-    btn.style.padding = '8px';
-    btn.style.lineHeight = '1.4';
-    // 恢复按钮
-    setTimeout(function() {
-      if (btn) {
-        btn.textContent = '定位未开启？点击跳转系统设置 →';
-        btn.style.fontSize = '13px';
-        btn.style.whiteSpace = '';
-        btn.style.height = '';
-        btn.style.padding = '10px';
-        btn.style.lineHeight = '';
-      }
-    }, 8000);
+    }
   };
 
   // Force viewport meta (backup for document.write in HTML)
