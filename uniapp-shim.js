@@ -44,10 +44,10 @@
     debugLog(msg, true);
   }, true);
 
-  debugLog('Shim v14 starting (script-tag injection)...');
+  debugLog('Shim v15 starting (script-tag injection)...');
 
   // ───── App 版本 & 更新配置 ─────
-  window.__appVersion = { code: 109, name: '1.0.9' };
+  window.__appVersion = { code: 110, name: '1.1.0' };
   window.__appDisplay = '鹭茄记 V' + window.__appVersion.name;
   window.__updateUrl = (function(){
     try { return localStorage.getItem('cigar:update_url') || 'https://raw.githubusercontent.com/yashiro-bot/-app/main/version.json'; } catch(e) { return ''; }
@@ -132,6 +132,14 @@
       debugLog('window.open OK');
       return true;
     } catch(e) { debugLog('window.open error: ' + e.message); }
+    // 方案E：直接导航（intent:// 必须走 WebView 原生 shouldOverrideUrlLoading）
+    try {
+      if (url.indexOf('intent://') === 0) {
+        window.location.href = url;
+        debugLog('window.location.href OK');
+        return true;
+      }
+    } catch(e) { debugLog('location.href error: ' + e.message); }
     return false;
   }
   window.__checkUpdate = function(silent) {

@@ -1,6 +1,6 @@
 {
-  "versionCode": 109,
-  "versionName": "1.0.9",
-  "apkUrl": "https://github.com/yashiro-bot/-app/releases/download/v1.0.9/V1.0.9.apk",
-  "note": "下载改用plus.runtime.openURL→uni.downloadFile→UniAppBridge→window.open四路回退；定位跳转改用统一_openUrl函数"
+  "versionCode": 110,
+  "versionName": "1.1.0",
+  "apkUrl": "https://github.com/yashiro-bot/-app/releases/download/v1.1.0/V1.1.0.apk",
+  "note": "定位跳转修复: intent://必须走window.location.href才能触发WebView原生shouldOverrideUrlLoading"
 }
