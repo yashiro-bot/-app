@@ -46,6 +46,56 @@
 
   debugLog('Shim v8 starting (script-tag injection)...');
 
+  // ───── App 版本 & 更新配置 ─────
+  window.__appVersion = { code: 37, name: '1.0.35' };
+  window.__updateUrl = (function(){
+    try { return localStorage.getItem('cigar:update_url') || 'https://raw.githubusercontent.com/your-org/cigar-collection/main/version.json'; } catch(e) { return ''; }
+  })();
+
+  // ───── 检查更新 ─────
+  window.__checkUpdate = function(silent) {
+    var url = window.__updateUrl;
+    if (!url) { if (!silent) window.__updateToast('未配置更新地址'); return; }
+    try {
+      var xhr = new XMLHttpRequest();
+      xhr.open('GET', url, true);
+      xhr.onload = function() {
+        try {
+          var info = JSON.parse(xhr.responseText);
+          var cur = window.__appVersion;
+          if (info.versionCode > cur.code) {
+            if (confirm('发现新版本 ' + info.versionName + '\n' + (info.note || '') + '\n\n是否下载更新？')) {
+              if (window.UniAppBridge && window.UniAppBridge.openURL) {
+                window.UniAppBridge.openURL(info.apkUrl);
+              } else {
+                window.open(info.apkUrl, '_blank');
+              }
+            }
+          } else if (!silent) {
+            window.__updateToast('当前已是最新版本 (' + cur.name + ')');
+          }
+        } catch(e) { if (!silent) window.__updateToast('版本检查失败'); }
+      };
+      xhr.onerror = function() { if (!silent) window.__updateToast('网络错误，无法检查更新'); };
+      xhr.send();
+    } catch(e) { if (!silent) window.__updateToast('检查更新失败'); }
+  };
+  window.__updateToast = function(msg) {
+    try {
+      if (typeof uni !== 'undefined' && uni.showToast) uni.showToast({ title: msg, icon: 'none', duration: 2500 });
+      else alert(msg);
+    } catch(e) { alert(msg); }
+  };
+
+  // ───── 启动时请求定位权限 ─────
+  (function(){
+    if (typeof navigator === 'undefined' || !navigator.geolocation) return;
+    // 静默触发权限对话框（结果不重要，只是让系统弹窗）
+    navigator.geolocation.getCurrentPosition(function(){}, function(){}, {
+      enableHighAccuracy: true, timeout: 5000, maximumAge: 0
+    });
+  })();
+
   // Force viewport meta (backup for document.write in HTML)
   (function() {
     var vp = document.querySelector('meta[name="viewport"]');
@@ -2625,6 +2675,8 @@ var _pageWrapperEl = null;
                 '    <div style="display:flex;justify-content:space-between;font-size:14px"><span style="color:#888">角色</span><span id="__profile_role2" style="color:#333;font-weight:500"></span></div>',
                 '  </div>',
                 '  <button id="__profile_switch" style="width:100%;padding:14px;background:#f0f7ff;color:#1989fa;border:1px solid #1989fa;border-radius:10px;font-size:16px;font-weight:600;cursor:pointer;margin-bottom:12px;display:flex;align-items:center;justify-content:center;gap:6px">切换账号</button>',
+                '  <button id="__profile_update" style="width:100%;padding:14px;background:#e8f5e9;color:#2e7d32;border:1px solid #2e7d32;border-radius:10px;font-size:16px;font-weight:600;cursor:pointer;margin-bottom:12px;display:flex;align-items:center;justify-content:center;gap:6px">检查更新</button>',
+                '  <div style="text-align:center;font-size:12px;color:#aaa;margin-bottom:14px">当前版本 ' + (window.__appVersion ? window.__appVersion.name : '') + '</div>',
                 '  <button id="__profile_logout" style="width:100%;padding:14px;background:#ffebee;color:#d32f2f;border:none;border-radius:10px;font-size:16px;font-weight:600;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:6px">退出登录</button>',
                 '</div>'
               ].join('');
@@ -2635,6 +2687,7 @@ var _pageWrapperEl = null;
 
               document.getElementById('__profile_close').onclick = closeProfilePanel;
               document.getElementById('__profile_switch').onclick = function() { showSwitchAccount(); };
+              document.getElementById('__profile_update').onclick = function() { window.__checkUpdate(false); };
               document.getElementById('__profile_logout').onclick = function() {
                 // Clear auth
                 try { localStorage.removeItem('cigar:token'); localStorage.removeItem('cigar:user'); } catch(e) {}
