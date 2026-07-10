@@ -44,10 +44,10 @@
     debugLog(msg, true);
   }, true);
 
-  debugLog('Shim v9 starting (script-tag injection)...');
+  debugLog('Shim v10 starting (script-tag injection)...');
 
   // ───── App 版本 & 更新配置 ─────
-  window.__appVersion = { code: 104, name: '1.0.4' };
+  window.__appVersion = { code: 105, name: '1.0.5' };
   window.__appDisplay = '鹭茄记 V' + window.__appVersion.name;
   window.__updateUrl = (function(){
     try { return localStorage.getItem('cigar:update_url') || 'https://raw.githubusercontent.com/yashiro-bot/-app/main/version.json'; } catch(e) { return ''; }
@@ -96,68 +96,175 @@
     } catch(e) { debugLog('_uniModal DOM fallback failed: ' + e.message, true); }
   }
 
-  // ───── 检查更新（优先 uni.request 桥，退路 fetch，再退路 XHR） ─────
+  // ───── 检查更新（fetch 带超时 + GitHub API 备用 + 手动下载入口） ─────
   window.__checkUpdate = function(silent) {
     var url = window.__updateUrl;
-    debugLog('__checkUpdate called, silent=' + silent + ', url=' + url);
+    debugLog('__checkUpdate called, silent=' + silent + ', url=' + url + ' (len=' + (url||'').length + ')');
     if (!url) { if (!silent) _uniToast('未配置更新地址'); return; }
     var cur = window.__appVersion;
+
+    // 立即展示"检查中"反馈，避免无反应的感觉
+    _uniModal('检查更新', '正在连接更新服务器...\n\n版本 ' + cur.name + '\n请稍候', null, null);
+
+    var TIMEOUT_MS = 12000;
+    var finished = false;
+
     var done = function(info) {
+      if (finished) return; finished = true;
       try {
-        debugLog('Update check response: versionCode=' + info.versionCode + ', cur=' + cur.code);
+        debugLog('Update check OK: v' + info.versionCode + ' >? cur ' + cur.code);
         if (info.versionCode > cur.code) {
-          _uniModal('发现新版本 ' + info.versionName, info.note || '', function() {
+          _uniModal('发现新版本 ' + info.versionName, (info.note || '') + '\n\n确定下载更新？', function() {
             var apkUrl = info.apkUrl;
-            debugLog('User clicked download: ' + apkUrl);
+            debugLog('Download: ' + apkUrl);
             if (window.UniAppBridge && window.UniAppBridge.openURL) {
               window.UniAppBridge.openURL(apkUrl);
             } else {
               window.open(apkUrl, '_blank');
             }
-          }, function() { debugLog('User cancelled update'); });
+          }, function() { debugLog('User cancelled'); });
         } else {
-          if (!silent) _uniToast('已是最新版 (' + cur.name + ')');
-          else debugLog('Already latest, silent mode');
+          _uniModal('已是最新版', '当前版本: ' + cur.name + '\n无需更新', null, null);
         }
       } catch(e) {
-        debugLog('Update done handler error: ' + e.message, true);
-        if (!silent) _uniToast('版本检查失败');
+        debugLog('done() error: ' + e.message, true);
+        if (!silent) _uniToast('版本检查异常');
       }
     };
+
     var fail = function(reason) {
-      debugLog('Update fetch failed: ' + (reason || 'unknown'), true);
-      if (!silent) _uniToast('网络错误，无法检查更新');
+      if (finished) return; finished = true;
+      debugLog('Update check FAILED: ' + (reason || 'unknown'), true);
+      // 显示手动下载入口
+      var releasesUrl = 'https://github.com/yashiro-bot/-app/releases/latest';
+      _uniModal(
+        '无法连接更新服务器',
+        '自动检查失败 (' + (reason || '网络错误') + ')\n\n' +
+          '你可以手动查看最新版本：\n' + releasesUrl,
+        function() {
+          debugLog('Open releases page');
+          if (window.UniAppBridge && window.UniAppBridge.openURL) {
+            window.UniAppBridge.openURL(releasesUrl);
+          } else {
+            window.open(releasesUrl, '_blank');
+          }
+        },
+        function() { debugLog('User dismissed manual download dialog'); }
+      );
     };
 
-    // 方案A：uni.request（UniApp 原生网络请求，无 CORS 限制）
-    if (typeof uni !== 'undefined' && uni.request) {
+    // ───── 方案A：fetch 到原始 URL（raw.githubusercontent.com） ─────
+    var tryFetch = function(targetUrl) {
+      debugLog('Fetching: ' + targetUrl);
+      if (typeof fetch === 'undefined') {
+        tryXHR(targetUrl);
+        return;
+      }
+      var controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
+      var timeoutId = controller ? setTimeout(function() {
+        debugLog('Fetch timeout (' + TIMEOUT_MS + 'ms)');
+        controller.abort();
+        tryFallback(targetUrl);
+      }, TIMEOUT_MS) : null;
+
+      fetch(targetUrl, {
+        method: 'GET',
+        cache: 'no-cache',
+        signal: controller ? controller.signal : undefined
+      })
+      .then(function(r) {
+        if (timeoutId) clearTimeout(timeoutId);
+        debugLog('fetch status=' + r.status + ' for ' + targetUrl);
+        if (!r.ok) throw new Error('HTTP ' + r.status);
+        return r.json();
+      })
+      .then(function(data) {
+        done(data);
+      })
+      .catch(function(e) {
+        if (timeoutId) clearTimeout(timeoutId);
+        if (e.name === 'AbortError') {
+          debugLog('fetch aborted (timeout)');
+          tryFallback(targetUrl);
+        } else {
+          debugLog('fetch error: ' + e.message);
+          tryFallback(targetUrl);
+        }
+      });
+    };
+
+    // ───── 方案B：XHR 退路 ─────
+    var tryXHR = function(targetUrl) {
+      debugLog('XHR fallback: ' + targetUrl);
       try {
-        debugLog('Attempt uni.request...');
-        uni.request({
-          url: url,
-          method: 'GET',
-          dataType: 'json',
-          success: function(res) { done(res.data); },
-          fail: function(err) { fail(err && (err.errMsg || JSON.stringify(err))); }
+        var xhr = new XMLHttpRequest();
+        xhr.open('GET', targetUrl, true);
+        xhr.timeout = TIMEOUT_MS;
+        xhr.onload = function() {
+          debugLog('XHR status=' + xhr.status + ' for ' + targetUrl);
+          if (xhr.status >= 200 && xhr.status < 300) {
+            try { done(JSON.parse(xhr.responseText)); } catch(e) { fail('JSON: ' + e.message); }
+          } else {
+            tryFallback(targetUrl);
+          }
+        };
+        xhr.onerror = function() { tryFallback(targetUrl); };
+        xhr.ontimeout = function() { debugLog('XHR timeout'); tryFallback(targetUrl); };
+        xhr.send();
+      } catch(e) { tryFallback(targetUrl); }
+    };
+
+    // ───── 备用 URL ─────
+    var fallbackTried = false;
+    var tryFallback = function(failedUrl) {
+      if (fallbackTried) { fail('所有通道均失败'); return; }
+      fallbackTried = true;
+      debugLog('Trying fallback URL...');
+      // 备用：尝试直接访问 GitHub release 页面（不会返回 JSON，但用于诊断）
+      // 优先尝试 GitHub API（支持 CORS）
+      var apiUrl = 'https://api.github.com/repos/yashiro-bot/-app/releases/latest';
+      debugLog('Trying GitHub API: ' + apiUrl);
+      if (typeof fetch !== 'undefined') {
+        fetch(apiUrl, { method: 'GET', cache: 'no-cache' })
+        .then(function(r) {
+          debugLog('GitHub API status=' + r.status);
+          if (r.ok) return r.json();
+          throw new Error('HTTP ' + r.status);
+        })
+        .then(function(data) {
+          // GitHub API 格式映射到 version.json 格式
+          var tag = (data.tag_name || '').replace(/^v/, '');
+          var vparts = tag.split('.');
+          var vc = parseInt(vparts[0]||'0')*100 + parseInt(vparts[1]||'0')*10 + parseInt(vparts[2]||'0');
+          var apkAsset = null;
+          if (data.assets && data.assets.length > 0) {
+            for (var ai = 0; ai < data.assets.length; ai++) {
+              if ((data.assets[ai].name || '').endsWith('.apk')) { apkAsset = data.assets[ai]; break; }
+            }
+          }
+          done({
+            versionCode: vc,
+            versionName: tag,
+            apkUrl: apkAsset ? apkAsset.browser_download_url : (data.html_url + '/download/' + data.tag_name + '/' + data.tag_name + '.apk'),
+            note: data.body || ''
+          });
+        })
+        .catch(function(e) {
+          debugLog('GitHub API failed: ' + e.message);
+          fail('无法连接更新服务器');
         });
-        return;
-      } catch(e) { debugLog('uni.request threw: ' + e.message, true); }
+      } else {
+        fail('所有网络通道不可用');
+      }
+    };
+
+    // 从 fetch 开始（不需要 uni.request，它会挂起）
+    if (typeof fetch !== 'undefined' || typeof XMLHttpRequest !== 'undefined') {
+      tryFetch(url);
+    } else {
+      fail('当前环境不支持网络请求');
     }
-    // 方案B：fetch（标准 Web API）
-    if (typeof fetch !== 'undefined') {
-      try {
-        debugLog('Attempt fetch...');
-        fetch(url, { method: 'GET', cache: 'no-cache' })
-          .then(function(r) {
-            debugLog('fetch status=' + r.status);
-            if (!r.ok) throw new Error('HTTP ' + r.status);
-            return r.json();
-          })
-          .then(done)
-          .catch(function(e) { fail(e.message); });
-        return;
-      } catch(e) { debugLog('fetch threw: ' + e.message, true); }
-    }
+  };
     // 方案C：XHR 最终退路
     try {
       debugLog('Attempt XHR...');
