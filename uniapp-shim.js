@@ -44,10 +44,10 @@
     debugLog(msg, true);
   }, true);
 
-  debugLog('Shim v21 starting (script-tag injection)...');
+  debugLog('Shim v22 starting (script-tag injection)...');
 
   // ───── App 版本 & 更新配置 ─────
-  window.__appVersion = { code: 116, name: '1.1.6' };
+  window.__appVersion = { code: 117, name: '1.1.7' };
   window.__appDisplay = '鹭茄记 V' + window.__appVersion.name;
   window.__updateUrl = (function(){
     try { return localStorage.getItem('cigar:update_url') || 'https://raw.githubusercontent.com/yashiro-bot/-app/main/version.json'; } catch(e) { return ''; }
@@ -3064,14 +3064,27 @@ var _pageWrapperEl = null;
                 var locDiv = document.getElementById('__profile_location_guide');
                 if (!locDiv) return;
                 if (window.__locationDenied === true) {
-                  locDiv.innerHTML = '⚠ 定位权限未开启<br><span style="font-size:11px;color:#bf360c">设置 → 应用管理 → 鹭茄记 → 权限 → 位置信息—允许精确定位—</span>';
+                  locDiv.innerHTML = '⚠ 定位权限未开启<br><span style="font-size:11px;color:#bf360c;line-height:1.5;display:inline-block;margin-top:4px">设置 →应用— 应用管理 → 鹭茄记 → 权限 →定位—使用应用时允许</span>';
+                  locDiv.style.background = '#fff8e1';
+                  locDiv.style.color = '#e65100';
+                  locDiv.style.borderColor = '#ffca28';
+                  locDiv.style.textAlign = 'left';
                   locDiv.style.display = 'block';
                 } else {
                   locDiv.innerHTML = '✓ 定位权限已开启';
                   locDiv.style.background = '#e8f5e9';
                   locDiv.style.color = '#2e7d32';
                   locDiv.style.borderColor = '#a5d6a7';
-                  locDiv.style.display = 'block';
+                  locDiv.style.textAlign = 'center';
+                  locDiv.style.display = 'flex';
+                  locDiv.style.alignItems = 'center';
+                  locDiv.style.justifyContent = 'center';
+                  locDiv.style.gap = '6px';
+                  locDiv.style.fontSize = '16px';
+                  locDiv.style.fontWeight = '600';
+                  locDiv.style.padding = '14px';
+                  locDiv.style.border = '1px solid #2e7d32';
+                  locDiv.style.borderRadius = '10px';
                 }
               })();
               document.getElementById('__profile_logout').onclick = function() {
