@@ -1,6 +1,6 @@
 {
   "versionCode": 101,
   "versionName": "1.0.1",
-  "apkUrl": "",
+  "apkUrl": "https://github.com/yashiro-bot/-app/releases/download/v1.0.1/V1.0.1.apk",
   "note": "定位权限启动时自动申请，统一版本号显示"
 }
