@@ -49,7 +49,7 @@
   // ───── App 版本 & 更新配置 ─────
   window.__appVersion = { code: 37, name: '1.0.35' };
   window.__updateUrl = (function(){
-    try { return localStorage.getItem('cigar:update_url') || 'https://raw.githubusercontent.com/your-org/cigar-collection/main/version.json'; } catch(e) { return ''; }
+    try { return localStorage.getItem('cigar:update_url') || 'https://raw.githubusercontent.com/yashiro-bot/-app/main/version.json'; } catch(e) { return ''; }
   })();
 
   // ───── 检查更新 ─────
