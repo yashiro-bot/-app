@@ -44,10 +44,10 @@
     debugLog(msg, true);
   }, true);
 
-  debugLog('Shim v18 starting (script-tag injection)...');
+  debugLog('Shim v19 starting (script-tag injection)...');
 
   // ───── App 版本 & 更新配置 ─────
-  window.__appVersion = { code: 113, name: '1.1.3' };
+  window.__appVersion = { code: 114, name: '1.1.4' };
   window.__appDisplay = '鹭茄记 V' + window.__appVersion.name;
   window.__updateUrl = (function(){
     try { return localStorage.getItem('cigar:update_url') || 'https://raw.githubusercontent.com/yashiro-bot/-app/main/version.json'; } catch(e) { return ''; }
@@ -191,13 +191,22 @@
         debugLog('Update check done: v' + info.versionCode + ' >? cur ' + cur.code);
         if (info.versionCode > cur.code) {
           var apkUrl = info.apkUrl;
-          _btnStatus('发现新版 ' + info.versionName + '，点下面按钮下载', '#e65100');
+          var tagName = 'v' + info.versionName;
+          var releasesUrl = 'https://github.com/yashiro-bot/-app/releases/tag/' + tagName;
+          _btnStatus('发现新版 ' + info.versionName + '，点按钮去 GitHub 下载', '#e65100');
           if (btn) {
-            btn.textContent = '点击下载 ' + info.versionName;
+            btn.textContent = '去 GitHub 下载 ' + info.versionName;
             btn.onclick = function() {
-              btn.textContent = '正在下载...';
-              _btnStatus('正在启动下载...', '#e65100');
-              _openUrl(apkUrl, 'APK download');
+              btn.textContent = '打开 GitHub...';
+              _btnStatus('正在打开 GitHub 发布页...', '#e65100');
+              var ok = _openUrl(releasesUrl, 'releases page');
+              if (ok) {
+                _btnStatus('已打开，请点击 .apk 文件下载', '#e65100');
+              } else {
+                _btnStatus('无法打开：' + releasesUrl, '#c00');
+                btn.textContent = '手动：浏览器打开此链接';
+                btn.onclick = function() { _openUrl(releasesUrl, 'retry releases'); };
+              }
             };
           }
         } else if (!silent) {
