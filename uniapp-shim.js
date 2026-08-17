@@ -44,10 +44,10 @@
     debugLog(msg, true);
   }, true);
 
-  debugLog('Shim v24 starting (script-tag injection)...');
+  debugLog('Shim v25 starting (script-tag injection)...');
 
   // ───── App 版本 & 更新配置 ─────
-  window.__appVersion = { code: 119, name: '1.1.9' };
+  window.__appVersion = { code: 120, name: '1.2.0' };
   window.__appDisplay = '鹭茄记 V' + window.__appVersion.name;
   window.__updateUrl = (function(){
     try { return localStorage.getItem('cigar:update_url') || 'https://raw.githubusercontent.com/yashiro-bot/-app/main/version.json'; } catch(e) { return ''; }
@@ -1615,6 +1615,10 @@ var SUPABASE_ANON_KEY = (function(){try{return localStorage.getItem('sb_key')||'
               if (cs === 201) {
                 var colId = null;
                 try { var cr = JSON.parse(ct); if (cr && cr.length) colId = cr[0].id; } catch(e) {}
+                // 关键修复：提交成功后删除 localStorage 缓存，避免 _sbSyncAll 重试时重复提交
+                if (p.customerId) {
+                  try { localStorage.removeItem('cigar:submission:' + p.customerId); } catch(e) {}
+                }
                 if (colId && p.details && p.details.length) {
                   var dets = p.details.map(function(d) {
                     return {
@@ -1646,7 +1650,9 @@ var SUPABASE_ANON_KEY = (function(){try{return localStorage.getItem('sb_key')||'
             });
           }
 
+          var _sbSyncAllRunned = false;
           function _sbSyncAll() {
+            if (_sbSyncAllRunned) { debugLog('_sbSyncAll already run, skip'); return; }
             if (!SUPABASE_URL || !SUPABASE_ANON_KEY) { debugLog('Supabase not configured', true); return; }
             _sbUpsert('customers', _customers, function(cs) {
               debugLog('customers sync: ' + (cs === 201 ? 'ok' : cs));
@@ -1669,6 +1675,7 @@ var SUPABASE_ANON_KEY = (function(){try{return localStorage.getItem('sb_key')||'
               } catch(e) {}
             }
             if (pending > 0) debugLog('syncing ' + pending + ' pending submissions to Supabase');
+            _sbSyncAllRunned = true;
           }
 
           debugLog('XHR prototype mock installed');
