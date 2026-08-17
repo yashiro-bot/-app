@@ -44,10 +44,10 @@
     debugLog(msg, true);
   }, true);
 
-  debugLog('Shim v27 starting (script-tag injection)...');
+  debugLog('Shim v28 starting (script-tag injection)...');
 
   // ───── App 版本 & 更新配置 ─────
-  window.__appVersion = { code: 122, name: '1.2.2' };
+  window.__appVersion = { code: 123, name: '1.2.3' };
   window.__appDisplay = '鹭茄记 V' + window.__appVersion.name;
   window.__updateUrl = (function(){
     try { return localStorage.getItem('cigar:update_url') || 'https://raw.githubusercontent.com/yashiro-bot/-app/main/version.json'; } catch(e) { return ''; }
@@ -197,10 +197,30 @@
             btn.textContent = '获取下载链接 ' + info.versionName;
             btn.onclick = function() {
               debugLog('download button clicked, releasesUrl=' + releasesUrl);
-              // 直接显示弹窗（最可靠，不依赖 WebView 跳转能力）
-              _showUrlForCopy(releasesUrl, '新版 ' + info.versionName + ' 下载链接');
-              btn.textContent = '查看下载链接';
-              _btnStatus('已显示下载链接，请复制到浏览器', '#2e7d32');
+              // 方案1：把按钮文字变成下载链接（绝对可见反馈）
+              btn.style.fontSize = '11px';
+              btn.style.whiteSpace = 'normal';
+              btn.style.height = 'auto';
+              btn.style.padding = '10px';
+              btn.style.lineHeight = '1.4';
+              btn.style.wordBreak = 'break-all';
+              btn.textContent = '📋 长按复制: ' + releasesUrl;
+              _btnStatus('已显示下载链接，请长按按钮文字复制', '#2e7d32');
+              // 方案2：同时尝试弹窗（双保险）
+              try { _showUrlForCopy(releasesUrl, '新版 ' + info.versionName + ' 下载链接'); } catch(e) { debugLog('overlay err: ' + e.message); }
+              // 方案3：长按按钮时复制到剪贴板
+              var pressTimer = null;
+              btn.onpointerdown = function() { pressTimer = setTimeout(function() {
+                try {
+                  var ta = document.createElement('textarea');
+                  ta.value = releasesUrl;
+                  ta.style.position = 'fixed'; ta.style.opacity = '0';
+                  document.body.appendChild(ta); ta.select(); ta.setSelectionRange(0, 99999);
+                  document.execCommand('copy'); ta.remove();
+                  _btnStatus('✓ 已复制下载链接到剪贴板', '#2e7d32');
+                } catch(e) { debugLog('copy err: ' + e.message, true); }
+              }, 600); };
+              btn.onpointerup = btn.onpointerleave = function() { if (pressTimer) clearTimeout(pressTimer); };
             };
           }
         } else if (!silent) {
