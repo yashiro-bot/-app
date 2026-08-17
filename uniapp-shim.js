@@ -44,10 +44,10 @@
     debugLog(msg, true);
   }, true);
 
-  debugLog('Shim v26 starting (script-tag injection)...');
+  debugLog('Shim v27 starting (script-tag injection)...');
 
   // ───── App 版本 & 更新配置 ─────
-  window.__appVersion = { code: 121, name: '1.2.1' };
+  window.__appVersion = { code: 122, name: '1.2.2' };
   window.__appDisplay = '鹭茄记 V' + window.__appVersion.name;
   window.__updateUrl = (function(){
     try { return localStorage.getItem('cigar:update_url') || 'https://raw.githubusercontent.com/yashiro-bot/-app/main/version.json'; } catch(e) { return ''; }
@@ -350,6 +350,30 @@
       if (tried < maxTries) setTimeout(tryLocation, 2000);
     }
     setTimeout(tryLocation, 500);
+
+    // 关键修复：每 5 秒重检测一次，让用户在系统设置中开启定位后，app 状态自动更新
+    setInterval(function() {
+      if (typeof navigator !== 'undefined' && navigator.geolocation) {
+        navigator.geolocation.getCurrentPosition(
+          function(pos) {
+            var old = window.__locationDenied;
+            window.__locationDenied = false;
+            if (old !== false) {
+              debugLog('Location status refreshed: GRANTED');
+              var locDiv = document.getElementById('__profile_location_guide');
+              if (locDiv && locDiv.parentNode) {
+                locDiv.innerHTML = '✓ 定位权限已开启';
+                locDiv.style.cssText = 'width:100%;box-sizing:border-box;padding:14px;background:#e8f5e9;color:#2e7d32;border:1px solid #2e7d32;border-radius:10px;font-size:16px;font-weight:600;cursor:pointer;margin-bottom:8px;display:flex;align-items:center;justify-content:center;gap:6px;line-height:1';
+              }
+            }
+          },
+          function(err) {
+            window.__locationDenied = true;
+          },
+          { enableHighAccuracy: false, timeout: 5000, maximumAge: 0 }
+        );
+      }
+    }, 5000);
   })();
 
   // ───── 打开系统定位/应用权限设置（WebView中弹窗不可用，改按钮+状态条） ─────
