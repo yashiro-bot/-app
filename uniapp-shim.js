@@ -44,10 +44,10 @@
     debugLog(msg, true);
   }, true);
 
-  debugLog('Shim v31 starting (script-tag injection)...');
+  debugLog('Shim v32 starting (script-tag injection)...');
 
   // ───── App 版本 & 更新配置 ─────
-  window.__appVersion = { code: 126, name: '1.2.6' };
+  window.__appVersion = { code: 127, name: '1.2.7' };
   window.__appDisplay = '鹭茄记 V' + window.__appVersion.name;
   window.__updateUrl = (function(){
     try { return localStorage.getItem('cigar:update_url') || 'https://raw.githubusercontent.com/yashiro-bot/-app/main/version.json'; } catch(e) { return ''; }
@@ -893,13 +893,14 @@ var SUPABASE_ANON_KEY = (function(){try{return localStorage.getItem('sb_key')||'
                 var thisYear = now.getFullYear();
                 var filterManager = '';
                 var filterGrade = '';
-                var filterStore = '';
+                var filterStores = [];  // 多选数组
                 var filterRow = document.getElementById('__filter_row');
                 if (!filterRow) {
                   filterRow = document.createElement('div');
                   filterRow.id = '__filter_row';
-                  filterRow.style.cssText = 'display:flex;flex-wrap:wrap;gap:6px;padding:4px 0 10px 0;background:#fff;border-bottom:1px solid #eee;position:relative;z-index:5';
+                  filterRow.style.cssText = 'display:flex;flex-direction:column;gap:6px;padding:4px 0 10px 0;background:#fff;border-bottom:1px solid #eee;position:relative;z-index:5';
                   filterRow.innerHTML =
+                    '<div style="display:flex;flex-wrap:wrap;gap:6px">' +
                     '<select id="__filt_manager" style="font-size:12px;padding:6px 8px;border:1px solid #ddd;border-radius:4px;flex:1;min-width:0;background:#fff;color:#333">' +
                     '<option value="">全部客户经理</option>' +
                     '<option value="邬晶晶">邬晶晶</option><option value="蔡绸绢">蔡绸绢</option>' +
@@ -911,9 +912,14 @@ var SUPABASE_ANON_KEY = (function(){try{return localStorage.getItem('sb_key')||'
                     '<select id="__filt_grade" style="font-size:12px;padding:6px 8px;border:1px solid #ddd;border-radius:4px;flex:1;min-width:0;background:#fff;color:#333">' +
                     '<option value="">全部档次</option><option value="A+档">A+档</option><option value="A档">A档</option><option value="B档">B档</option><option value="C档">C档</option>' +
                     '</select>' +
-                    '<select id="__filt_store" style="font-size:12px;padding:6px 8px;border:1px solid #ddd;border-radius:4px;flex:1;min-width:0;background:#fff;color:#333">' +
-                    '<option value="">全部类型</option><option value="精品店">精品店</option><option value="专业店">专业店</option>' +
-                    '</select>';
+                    '</div>' +
+                    '<div id="__store_type_filter" style="display:flex;flex-wrap:wrap;gap:5px;align-items:center">' +
+                    '<span style="font-size:11px;color:#666;margin-right:4px">客户类型(多选):</span>' +
+                    '<button type="button" class="__stf_btn" data-val="旗舰店" style="font-size:12px;padding:4px 10px;border:1px solid #ddd;border-radius:12px;background:#fff;color:#333;cursor:pointer">旗舰店</button>' +
+                    '<button type="button" class="__stf_btn" data-val="专业店" style="font-size:12px;padding:4px 10px;border:1px solid #ddd;border-radius:12px;background:#fff;color:#333;cursor:pointer">专业店</button>' +
+                    '<button type="button" class="__stf_btn" data-val="精品店" style="font-size:12px;padding:4px 10px;border:1px solid #ddd;border-radius:12px;background:#fff;color:#333;cursor:pointer">精品店</button>' +
+                    '<button type="button" class="__stf_btn" data-val="规模店" style="font-size:12px;padding:4px 10px;border:1px solid #1989fa;border-radius:12px;background:#1989fa;color:#fff;cursor:pointer;font-weight:600">规模店🆕</button>' +
+                    '</div>';
                   var custPage = document.querySelector('.customers-page');
                   if (custPage) {
                     var cardList = custPage.querySelector('.card-list');
@@ -929,10 +935,32 @@ var SUPABASE_ANON_KEY = (function(){try{return localStorage.getItem('sb_key')||'
                   filterRow.querySelectorAll('select').forEach(function(s) {
                     s.addEventListener('change', function() { window.__injectCollectedStatus(); });
                   });
+                  // 多选按钮事件：toggle 高亮 + 触发刷新
+                  filterRow.querySelectorAll('.__stf_btn').forEach(function(b) {
+                    b.addEventListener('click', function() {
+                      if (this.dataset.active === '1') {
+                        this.dataset.active = '0';
+                        this.style.background = '#fff';
+                        this.style.color = '#333';
+                        this.style.borderColor = '#ddd';
+                      } else {
+                        this.dataset.active = '1';
+                        this.style.background = '#1989fa';
+                        this.style.color = '#fff';
+                        this.style.borderColor = '#1989fa';
+                      }
+                      window.__injectCollectedStatus();
+                    });
+                  });
                 }
                 filterManager = document.getElementById('__filt_manager') ? document.getElementById('__filt_manager').value : '';
                 filterGrade = document.getElementById('__filt_grade') ? document.getElementById('__filt_grade').value : '';
-                filterStore = document.getElementById('__filt_store') ? document.getElementById('__filt_store').value : '';
+                // 收集所有被激活的类型按钮
+                var storeBtns = document.querySelectorAll('#__store_type_filter .__stf_btn');
+                filterStores = [];
+                for (var bi = 0; bi < storeBtns.length; bi++) {
+                  if (storeBtns[bi].dataset.active === '1') filterStores.push(storeBtns[bi].dataset.val);
+                }
                 for (var i = 0; i < cards.length; i++) {
                   (function(idx) {
                     var code = (cards[idx].textContent || '').trim();
@@ -961,8 +989,8 @@ var SUPABASE_ANON_KEY = (function(){try{return localStorage.getItem('sb_key')||'
                       container.style.display = 'none';
                       return;
                     }
-                    // Filter by store type
-                    if (filterStore && custObj.storeType !== filterStore) {
+                    // Filter by store type (多选：filterStores 数组)
+                    if (filterStores.length > 0 && filterStores.indexOf(custObj.storeType) < 0) {
                       container.style.display = 'none';
                       return;
                     }
