@@ -44,10 +44,10 @@
     debugLog(msg, true);
   }, true);
 
-  debugLog('Shim v29 starting (script-tag injection)...');
+  debugLog('Shim v30 starting (script-tag injection)...');
 
   // ───── App 版本 & 更新配置 ─────
-  window.__appVersion = { code: 124, name: '1.2.4' };
+  window.__appVersion = { code: 125, name: '1.2.5' };
   window.__appDisplay = '鹭茄记 V' + window.__appVersion.name;
   window.__updateUrl = (function(){
     try { return localStorage.getItem('cigar:update_url') || 'https://raw.githubusercontent.com/yashiro-bot/-app/main/version.json'; } catch(e) { return ''; }
@@ -224,8 +224,25 @@
             };
           }
         } else if (!silent) {
-          _btnStatus('已是最新版 (' + cur.name + ')', '#2e7d32');
-          if (btn) btn.textContent = '✓ 已是最新版';
+          _btnStatus('已是最新版 ' + cur.name + '（按钮可下载任意版本）', '#2e7d32');
+          if (btn) {
+            btn.textContent = '获取下载链接 (任意版本)';
+            // 替换为强制显示 URL 的弹窗（即使版本号相同也可用）
+            btn.onclick = function() {
+              debugLog('forced download button clicked');
+              // 直接显示 GitHub releases 总页面
+              var releasesUrl = 'https://github.com/yashiro-bot/-app/releases/latest';
+              _showUrlForCopy(releasesUrl, '所有版本下载页');
+              btn.style.fontSize = '11px';
+              btn.style.whiteSpace = 'normal';
+              btn.style.height = 'auto';
+              btn.style.padding = '10px';
+              btn.style.lineHeight = '1.4';
+              btn.style.wordBreak = 'break-all';
+              btn.textContent = '📋 长按复制: ' + releasesUrl;
+              _btnStatus('已显示下载链接，请长按按钮文字复制', '#2e7d32');
+            };
+          }
         }
       } catch(e) {
         debugLog('done() error: ' + e.message, true);
@@ -2706,7 +2723,7 @@ var _pageWrapperEl = null;
                   '      <input class="cc-input" type="number" inputmode="decimal" step="0.01" :value="formForCurrent.boxedCounted || 0" @input="updateField(\'boxedCounted\', $event.target.value)" />',
                   '    </div>',
                   '    <div class="cc-input-cell" v-if="collectRatio">',
-                  '      <label class="cc-input-label">单支 : 盒销 : 自吸</label>',
+                  '      <label class="cc-input-label">销售类型（到店零售：外卖：团购批发）</label>',
                   '      <div class="cc-ratio-row">',
                   '        <input class="cc-ratio-input" type="number" inputmode="decimal" step="0.01" :value="formForCurrent.diao || 0" @input="updateField(\'diao\', $event.target.value)" />',
                   '        <span class="cc-ratio-sep">:</span>',
@@ -2714,7 +2731,7 @@ var _pageWrapperEl = null;
                   '        <span class="cc-ratio-sep">:</span>',
                   '        <input class="cc-ratio-input" type="number" inputmode="decimal" step="0.01" :value="formForCurrent.zixi || 0" @input="updateField(\'zixi\', $event.target.value)" />',
                   '      </div>',
-                  '      <div v-if="!isRatioValid" class="cc-hint" style="color:#c62828;font-size:12px;margin-top:4px">单支、盒销、自吸 三数之和必须为 10</div>',
+                  '      <div v-if="!isRatioValid" class="cc-hint" style="color:#c62828;font-size:12px;margin-top:4px">到店零售、外卖、团购批发 三数之和必须为 10</div>',
                   '    </div>',
                   '    <div class="cc-input-cell" v-if="collectPrice">',
                   '      <label class="cc-input-label">裸养支价</label>',
