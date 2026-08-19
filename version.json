@@ -1,6 +1,6 @@
 {
-  "versionCode": 123,
-  "versionName": "1.2.3",
-  "apkUrl": "https://github.com/yashiro-bot/-app/releases/download/v1.2.3/V1.2.3.apk",
-  "note": "\u4e0b\u8f7d\u6309\u94ae\u4e09\u4fdd\u9669: \u6309\u94ae\u53d8\u4e0b\u8f7d\u94fe\u63a5 + \u5f39\u7a97 + \u957f\u6309\u590d\u5236"
+  "versionCode": 124,
+  "versionName": "1.2.4",
+  "apkUrl": "https://github.com/yashiro-bot/-app/releases/download/v1.2.4/V1.2.4.apk",
+  "note": "\u5ba2\u6237\u540d\u5355\u66f4\u65b0: 58\u5bb6\u5ba2\u6237(\u4ece\u6e56\u91ccExcel), 57\u5bb6\u6709GIS\u7ecf\u7eac\u5ea6, \u5ba2\u6237\u7ecf\u7406\u548c\u7ec8\u7aef\u7c7b\u578b\u540c\u6b65\u66f4\u65b0"
 }
