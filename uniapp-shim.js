@@ -44,10 +44,10 @@
     debugLog(msg, true);
   }, true);
 
-  debugLog('Shim v32 starting (script-tag injection)...');
+  debugLog('Shim v33 starting (script-tag injection)...');
 
   // ───── App 版本 & 更新配置 ─────
-  window.__appVersion = { code: 127, name: '1.2.7' };
+  window.__appVersion = { code: 130, name: '1.3.0' };
   window.__appDisplay = '鹭茄记 V' + window.__appVersion.name;
   window.__updateUrl = (function(){
     try { return localStorage.getItem('cigar:update_url') || 'https://raw.githubusercontent.com/yashiro-bot/-app/main/version.json'; } catch(e) { return ''; }
@@ -2975,9 +2975,9 @@ var _pageWrapperEl = null;
             };
             debugLog('CustomHistory registered');
 
-            var tabNames = ['雪茄户', '采集进度', '我的'];
-            var tabPages = ['pages/customers/index', 'pages/history/index', 'pages/profile/index'];
-            var tabIcons = ['📋', '📊', '👤'];
+            var tabNames = ['雪茄户', '采集进度', '经营指导', '我的'];
+            var tabPages = ['pages/customers/index', 'pages/history/index', '__guidance__', 'pages/profile/index'];
+            var tabIcons = ['📋', '📊', '📈', '👤'];
             var tabBar = document.createElement('div');
             tabBar.id = '__tab_bar';
             tabBar.style.cssText = 'position:fixed;bottom:0;left:0;right:0;z-index:99999;background:#fff;border-top:1px solid #ddd;display:none;height:56px;box-shadow:0 -2px 6px rgba(0,0,0,0.08);padding-bottom:env(safe-area-inset-bottom,0)';
@@ -2992,8 +2992,10 @@ var _pageWrapperEl = null;
                 btn.onclick = function() {
                   var page = this.dataset.page;
                   if (page === 'pages/profile/index') {
-                    // 我的 tab — show profile panel instead of navigating
                     showProfilePanel();
+                  } else if (page === '__guidance__') {
+                    setActiveTab(idx);
+                    showGuidancePanel();
                   } else {
                     setActiveTab(idx);
                     navigateToPage(page);
@@ -3198,6 +3200,573 @@ var _pageWrapperEl = null;
             };
 
             debugLog('Profile panel ready');
+
+            // ============================================
+            // 经营指导面板 V1.3.0
+            // ============================================
+            var _guidanceOverlay = null;
+            window.__showGuidancePanel = showGuidancePanel;
+            function showGuidancePanel() {
+              if (_guidanceOverlay && _guidanceOverlay.parentNode) {
+                _guidanceOverlay.style.display = 'flex';
+                return;
+              }
+              _guidanceOverlay = document.createElement('div');
+              _guidanceOverlay.id = '__guidance_overlay';
+              _guidanceOverlay.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:#f5f6fa;z-index:99998;display:flex;flex-direction:column;overflow:hidden';
+              _guidanceOverlay.innerHTML = '<div id="__guidance_body" style="flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch"></div>';
+              document.body.appendChild(_guidanceOverlay);
+              renderGuidanceStep1();
+            }
+
+            function renderGuidanceStep1() {
+              var body = document.getElementById('__guidance_body');
+              if (!body) return;
+              // 获取当前用户角色，决定可见客户范围
+              var cRole = (window.__currentUser && window.__currentUser.role) || '';
+              var cName = (window.__currentUser && window.__currentUser.name) || '';
+              var visibleCustomers = _customers.slice();
+              if (cRole === 'manager') {
+                visibleCustomers = visibleCustomers.filter(function(c) { return c.manager === cName; });
+              }
+              var html = '';
+              html += '<div style="background:linear-gradient(135deg,#1989fa,#0e6fcc);color:#fff;padding:14px 16px;display:flex;align-items:center;justify-content:space-between;box-shadow:0 2px 6px rgba(0,0,0,0.15)">';
+              html += '<div style="font-size:17px;font-weight:600">📈 经营指导</div>';
+              html += '<button id="__gd_close" style="background:rgba(255,255,255,0.2);color:#fff;border:none;border-radius:50%;width:32px;height:32px;font-size:16px;cursor:pointer">✕</button>';
+              html += '</div>';
+              // 步骤指示
+              html += '<div style="background:#fff;padding:10px 16px;border-bottom:1px solid #eee;display:flex;gap:8px;align-items:center;font-size:13px">';
+              html += '<div style="background:#1989fa;color:#fff;border-radius:50%;width:22px;height:22px;display:flex;align-items:center;justify-content:center;font-size:12px">1</div>';
+              html += '<div style="font-weight:600">选择客户</div>';
+              html += '<div style="color:#999;margin-left:auto">已选 <span id="__gd_sel_count" style="color:#1989fa;font-weight:600">0</span> 家</div>';
+              html += '</div>';
+              // 客户列表（多选）
+              html += '<div style="padding:12px 16px">';
+              html += '<div style="display:flex;gap:6px;margin-bottom:10px">';
+              html += '<button id="__gd_all" style="flex:1;padding:6px;background:#e8f5ff;color:#1989fa;border:1px solid #1989fa;border-radius:6px;font-size:12px;cursor:pointer">全选</button>';
+              html += '<button id="__gd_none" style="flex:1;padding:6px;background:#f5f5f5;color:#666;border:1px solid #ddd;border-radius:6px;font-size:12px;cursor:pointer">清空</button>';
+              html += '<button id="__gd_only_col" style="flex:1;padding:6px;background:#fff8e1;color:#e65100;border:1px solid #ffca28;border-radius:6px;font-size:12px;cursor:pointer">仅已采集</button>';
+              html += '</div>';
+              html += '<div id="__gd_customer_list" style="background:#fff;border-radius:8px;overflow:hidden;border:1px solid #eee"></div>';
+              html += '</div>';
+              // 下一步按钮
+              html += '<div style="position:sticky;bottom:0;padding:12px 16px;background:#fff;border-top:1px solid #eee;display:flex;gap:10px;align-items:center">';
+              html += '<button id="__gd_cancel" style="padding:10px 16px;background:#f5f5f5;color:#666;border:none;border-radius:8px;font-size:14px;cursor:pointer">取消</button>';
+              html += '<button id="__gd_next" style="flex:1;padding:10px;background:#1989fa;color:#fff;border:none;border-radius:8px;font-size:15px;font-weight:600;cursor:pointer;opacity:0.5" disabled>下一步 →</button>';
+              html += '</div>';
+              body.innerHTML = html;
+              _renderGuidanceCustomerList(visibleCustomers);
+              // 事件绑定
+              document.getElementById('__gd_close').onclick = closeGuidance;
+              document.getElementById('__gd_cancel').onclick = closeGuidance;
+              document.getElementById('__gd_all').onclick = function() {
+                document.querySelectorAll('.__gd_cust_chk').forEach(function(c) { c.checked = true; });
+                _updateGuidanceSelCount();
+              };
+              document.getElementById('__gd_none').onclick = function() {
+                document.querySelectorAll('.__gd_cust_chk').forEach(function(c) { c.checked = false; });
+                _updateGuidanceSelCount();
+              };
+              document.getElementById('__gd_only_col').onclick = function() { _filterGuidanceCollectedOnly(); };
+              document.getElementById('__gd_next').onclick = renderGuidanceStep2;
+            }
+
+            function _renderGuidanceCustomerList(customers) {
+              var html = '';
+              for (var i = 0; i < customers.length; i++) {
+                var c = customers[i];
+                var typeColor = '#999';
+                if (c.store_type === '旗舰店') typeColor = '#e74c3c';
+                else if (c.store_type === '专业店') typeColor = '#2980b9';
+                else if (c.store_type === '精品店') typeColor = '#e67e22';
+                else if (c.store_type === '规模店') typeColor = '#27ae60';
+                html += '<label data-cid="' + c.id + '" class="__gd_cust_row" style="display:flex;align-items:center;padding:10px 12px;border-bottom:1px solid #f0f0f0;cursor:pointer;gap:10px">';
+                html += '<input type="checkbox" class="__gd_cust_chk" data-cid="' + c.id + '" style="width:18px;height:18px;cursor:pointer;flex-shrink:0">';
+                html += '<div style="flex:1;min-width:0">';
+                html += '<div style="font-size:14px;color:#222;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + c.name + '</div>';
+                html += '<div style="font-size:11px;color:#999;margin-top:2px">' + c.code + ' · 经理:' + (c.manager||'-') + '</div>';
+                html += '</div>';
+                html += '<span style="font-size:10px;padding:2px 6px;border-radius:3px;background:' + typeColor + ';color:#fff;flex-shrink:0">' + (c.store_type||'-') + '</span>';
+                html += '</label>';
+              }
+              document.getElementById('__gd_customer_list').innerHTML = html;
+              document.querySelectorAll('.__gd_cust_chk').forEach(function(c) {
+                c.addEventListener('change', _updateGuidanceSelCount);
+              });
+            }
+
+            function _updateGuidanceSelCount() {
+              var sel = document.querySelectorAll('.__gd_cust_chk:checked').length;
+              document.getElementById('__gd_sel_count').textContent = sel;
+              var btn = document.getElementById('__gd_next');
+              btn.disabled = sel === 0;
+              btn.style.opacity = sel === 0 ? '0.5' : '1';
+            }
+
+            function _getGuidanceSelectedCustomers() {
+              var ids = [];
+              document.querySelectorAll('.__gd_cust_chk:checked').forEach(function(c) { ids.push(c.dataset.cid); });
+              return _customers.filter(function(c) { return ids.indexOf(c.id) >= 0; });
+            }
+
+            function _filterGuidanceCollectedOnly() {
+              // 标记所有 checkbox 为 loading 状态，查询最近 90 天有采集的客户
+              _guidanceShowLoading('正在查询已采集客户...');
+              var ids = _customers.map(function(c) { return c.id; });
+              var since = new Date(Date.now() - 90 * 86400000).toISOString();
+              window.__sbApi('GET', 'collections', null,
+                'select=customer_id&customer_id=in.(' + ids.join(',') + ')&collected_at=gte.' + since + '&limit=1000',
+                function(status, resp) {
+                  _guidanceHideLoading();
+                  if (status !== 200) { alert('查询失败 status=' + status); return; }
+                  try {
+                    var rows = JSON.parse(resp || '[]');
+                    var withData = {};
+                    rows.forEach(function(r) { withData[r.customer_id] = true; });
+                    var rows2 = document.querySelectorAll('.__gd_cust_row');
+                    rows2.forEach(function(row) {
+                      var cid = row.dataset.cid;
+                      var chk = row.querySelector('.__gd_cust_chk');
+                      if (!withData[cid]) {
+                        row.style.opacity = '0.35';
+                        if (chk) chk.disabled = true;
+                      } else {
+                        chk.checked = true;
+                      }
+                    });
+                    _updateGuidanceSelCount();
+                  } catch(e) { alert('解析失败: ' + e.message); }
+                }
+              );
+            }
+
+            function _guidanceShowLoading(msg) {
+              var ex = document.getElementById('__gd_loading');
+              if (ex) ex.remove();
+              var d = document.createElement('div');
+              d.id = '__gd_loading';
+              d.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.5);z-index:99999;display:flex;align-items:center;justify-content:center;color:#fff;font-size:15px';
+              d.innerHTML = '<div style="text-align:center"><div style="border:3px solid #fff;border-top-color:transparent;border-radius:50%;width:36px;height:36px;margin:0 auto 12px;animation:spin 0.8s linear infinite"></div>' + (msg||'加载中...') + '</div>';
+              document.body.appendChild(d);
+            }
+            function _guidanceHideLoading() {
+              var ex = document.getElementById('__gd_loading');
+              if (ex) ex.remove();
+            }
+
+            function closeGuidance() {
+              if (_guidanceOverlay) _guidanceOverlay.style.display = 'none';
+            }
+
+            function renderGuidanceStep2() {
+              var selected = _getGuidanceSelectedCustomers();
+              if (selected.length === 0) { alert('请至少选择一位客户'); return; }
+              // 默认月份：本月
+              var now = new Date();
+              var defYear = now.getFullYear();
+              var defMonth = now.getMonth() + 1;
+              var body = document.getElementById('__guidance_body');
+              var html = '';
+              html += '<div style="background:linear-gradient(135deg,#1989fa,#0e6fcc);color:#fff;padding:14px 16px;display:flex;align-items:center;justify-content:center;position:relative;box-shadow:0 2px 6px rgba(0,0,0,0.15)">';
+              html += '<button id="__gd_back" style="position:absolute;left:16px;background:rgba(255,255,255,0.2);color:#fff;border:none;border-radius:50%;width:32px;height:32px;font-size:16px;cursor:pointer">←</button>';
+              html += '<div style="font-size:17px;font-weight:600">📈 经营指导</div>';
+              html += '</div>';
+              html += '<div style="background:#fff;padding:10px 16px;border-bottom:1px solid #eee;display:flex;gap:8px;align-items:center;font-size:13px">';
+              html += '<div style="background:#1989fa;color:#fff;border-radius:50%;width:22px;height:22px;display:flex;align-items:center;justify-content:center;font-size:12px">2</div>';
+              html += '<div style="font-weight:600">选择对比方式</div>';
+              html += '<div style="color:#999;margin-left:auto">已选 ' + selected.length + ' 家客户</div>';
+              html += '</div>';
+              html += '<div style="padding:16px;background:#f5f6fa;flex:1">';
+              // 对比模式
+              html += '<div style="background:#fff;padding:14px;border-radius:10px;margin-bottom:12px;box-shadow:0 1px 3px rgba(0,0,0,0.05)">';
+              html += '<div style="font-size:14px;font-weight:600;margin-bottom:10px">对比模式</div>';
+              html += '<label style="display:flex;align-items:flex-start;padding:10px;border:2px solid #1989fa;background:#f0f7ff;border-radius:8px;cursor:pointer;margin-bottom:8px" id="__gd_mode_h">';
+              html += '<input type="radio" name="__gd_mode" value="horizontal" checked style="margin-top:2px;margin-right:8px;cursor:pointer">';
+              html += '<div><div style="font-size:14px;font-weight:600;color:#1989fa">📊 客户横向对比</div>';
+              html += '<div style="font-size:12px;color:#666;margin-top:4px">对比所选客户在同一月份的采集数据，包括集中度、离散度，给出订购建议</div></div>';
+              html += '</label>';
+              html += '<label style="display:flex;align-items:flex-start;padding:10px;border:2px solid #ddd;background:#fff;border-radius:8px;cursor:pointer" id="__gd_mode_v">';
+              html += '<input type="radio" name="__gd_mode" value="vertical" style="margin-top:2px;margin-right:8px;cursor:pointer">';
+              html += '<div><div style="font-size:14px;font-weight:600;color:#333">📈 时间纵向对比</div>';
+              html += '<div style="font-size:12px;color:#666;margin-top:4px">对比所选客户当前月与前 3 个月的库存变动情况</div></div>';
+              html += '</label>';
+              html += '</div>';
+              // 月份选择（仅纵向需要显示前3个月范围）
+              html += '<div style="background:#fff;padding:14px;border-radius:10px;margin-bottom:12px;box-shadow:0 1px 3px rgba(0,0,0,0.05)">';
+              html += '<div style="font-size:14px;font-weight:600;margin-bottom:10px">目标月份</div>';
+              html += '<div style="display:flex;gap:8px">';
+              html += '<select id="__gd_year" style="flex:1;padding:8px;border:1px solid #ddd;border-radius:6px;font-size:14px;background:#fff"></select>';
+              html += '<select id="__gd_month" style="flex:1;padding:8px;border:1px solid #ddd;border-radius:6px;font-size:14px;background:#fff"></select>';
+              html += '</div>';
+              html += '<div id="__gd_range_hint" style="font-size:12px;color:#999;margin-top:8px"></div>';
+              html += '</div>';
+              // 已选客户摘要
+              html += '<div style="background:#fff;padding:14px;border-radius:10px;margin-bottom:12px;box-shadow:0 1px 3px rgba(0,0,0,0.05)">';
+              html += '<div style="font-size:14px;font-weight:600;margin-bottom:8px">已选客户</div>';
+              html += '<div style="font-size:12px;color:#666;line-height:1.6">';
+              for (var i = 0; i < selected.length; i++) {
+                html += '<span style="display:inline-block;background:#e8f5ff;color:#1989fa;padding:3px 8px;border-radius:10px;margin:2px 4px 2px 0;font-size:11px">' + selected[i].name + '</span>';
+              }
+              html += '</div></div>';
+              html += '</div>';
+              // 底部按钮
+              html += '<div style="position:sticky;bottom:0;padding:12px 16px;background:#fff;border-top:1px solid #eee;display:flex;gap:10px">';
+              html += '<button id="__gd_back2" style="padding:10px 16px;background:#f5f5f5;color:#666;border:none;border-radius:8px;font-size:14px;cursor:pointer">← 返回</button>';
+              html += '<button id="__gd_gen" style="flex:1;padding:10px;background:linear-gradient(135deg,#1989fa,#0e6fcc);color:#fff;border:none;border-radius:8px;font-size:15px;font-weight:600;cursor:pointer">📊 生成经营指导书</button>';
+              html += '</div>';
+              body.innerHTML = html;
+              // 填充年份/月份下拉
+              var ysel = document.getElementById('__gd_year');
+              var msel = document.getElementById('__gd_month');
+              for (var y = defYear; y >= defYear - 2; y--) {
+                var opt = document.createElement('option'); opt.value = y; opt.textContent = y + ' 年'; ysel.appendChild(opt);
+              }
+              for (var m = 1; m <= 12; m++) {
+                var opt = document.createElement('option'); opt.value = m; opt.textContent = m + ' 月'; msel.appendChild(opt);
+              }
+              ysel.value = defYear;
+              msel.value = defMonth;
+              // 事件
+              document.getElementById('__gd_back').onclick = document.getElementById('__gd_back2').onclick = function() {
+                // 简单回退：直接 close + reopen
+                closeGuidance();
+                showGuidancePanel();
+                // 恢复已选客户状态需要保存到 window 上
+              };
+              var updateRange = function() {
+                var y = parseInt(ysel.value), m = parseInt(msel.value);
+                var hint = document.getElementById('__gd_range_hint');
+                var mode = document.querySelector('input[name="__gd_mode"]:checked').value;
+                if (mode === 'horizontal') {
+                  hint.textContent = '对比 ' + y + '年' + m + '月 所选客户在该月采集的规格数据';
+                } else {
+                  hint.textContent = '对比 ' + (y-1) + '年' + m + '月 到 ' + y + '年' + m + '月 (近4个月) 的库存变动';
+                }
+              };
+              document.querySelectorAll('input[name="__gd_mode"]').forEach(function(r) {
+                r.addEventListener('change', function() {
+                  document.getElementById('__gd_mode_h').style.borderColor = this.value === 'horizontal' ? '#1989fa' : '#ddd';
+                  document.getElementById('__gd_mode_h').style.background = this.value === 'horizontal' ? '#f0f7ff' : '#fff';
+                  document.getElementById('__gd_mode_v').style.borderColor = this.value === 'vertical' ? '#1989fa' : '#ddd';
+                  document.getElementById('__gd_mode_v').style.background = this.value === 'vertical' ? '#f0f7ff' : '#fff';
+                  updateRange();
+                });
+              });
+              ysel.addEventListener('change', updateRange);
+              msel.addEventListener('change', updateRange);
+              updateRange();
+              document.getElementById('__gd_gen').onclick = function() {
+                var mode = document.querySelector('input[name="__gd_mode"]:checked').value;
+                var year = parseInt(ysel.value), month = parseInt(msel.value);
+                generateGuidanceReport(selected, mode, year, month);
+              };
+            }
+
+            // ============================================
+            // 数据查询 + 报告生成
+            // ============================================
+            function _guidanceFetchCollections(customerIds, year, month, cb) {
+              // 月份范围 [start, endExclusive)
+              var start = new Date(Date.UTC(year, month - 1, 1)).toISOString();
+              var end = new Date(Date.UTC(year, month, 1)).toISOString();
+              var ids = customerIds.join(',');
+              var params = 'select=*&customer_id=in.(' + ids + ')&collected_at=gte.' + start + '&collected_at=lt.' + end + '&order=collected_at.desc&limit=1000';
+              window.__sbApi('GET', 'collections', null, params, function(s1, r1) {
+                if (s1 !== 200) { cb(new Error('collections query failed: ' + s1), null); return; }
+                try {
+                  var cols = JSON.parse(r1 || '[]');
+                  if (cols.length === 0) { cb(null, []); return; }
+                  var colIds = cols.map(function(c) { return c.id; });
+                  var params2 = 'select=*&collection_id=in.(' + colIds.join(',') + ')&limit=5000';
+                  window.__sbApi('GET', 'collection_details', null, params2, function(s2, r2) {
+                    if (s2 !== 200) { cb(new Error('details query failed: ' + s2), null); return; }
+                    try {
+                      var dets = JSON.parse(r2 || '[]');
+                      cb(null, { collections: cols, details: dets });
+                    } catch(e) { cb(e, null); }
+                  });
+                } catch(e) { cb(e, null); }
+              });
+            }
+
+            function _guidanceFetchCollectionsRange(customerIds, startDate, endDate, cb) {
+              var ids = customerIds.join(',');
+              var params = 'select=*&customer_id=in.(' + ids + ')&collected_at=gte.' + startDate + '&collected_at=lt.' + endDate + '&order=collected_at.desc&limit=2000';
+              window.__sbApi('GET', 'collections', null, params, function(s1, r1) {
+                if (s1 !== 200) { cb(new Error('collections query failed: ' + s1), null); return; }
+                try {
+                  var cols = JSON.parse(r1 || '[]');
+                  if (cols.length === 0) { cb(null, []); return; }
+                  var colIds = cols.map(function(c) { return c.id; });
+                  var params2 = 'select=*&collection_id=in.(' + colIds.join(',') + ')&limit=10000';
+                  window.__sbApi('GET', 'collection_details', null, params2, function(s2, r2) {
+                    if (s2 !== 200) { cb(new Error('details query failed: ' + s2), null); return; }
+                    try {
+                      var dets = JSON.parse(r2 || '[]');
+                      cb(null, { collections: cols, details: dets });
+                    } catch(e) { cb(e, null); }
+                  });
+                } catch(e) { cb(e, null); }
+              });
+            }
+
+            function generateGuidanceReport(customers, mode, year, month) {
+              _guidanceShowLoading('正在查询采集数据...');
+              var ids = customers.map(function(c) { return c.id; });
+              if (mode === 'horizontal') {
+                _guidanceFetchCollections(ids, year, month, function(err, data) {
+                  _guidanceHideLoading();
+                  if (err) { alert('查询失败: ' + err.message); return; }
+                  if (!data.collections || data.collections.length === 0) {
+                    alert(year + '年' + month + '月 选中的客户没有采集数据，请先采集或选择其他月份');
+                    return;
+                  }
+                  renderGuidanceReport(customers, mode, year, month, data);
+                });
+              } else {
+                // 纵向：查最近 4 个月（含目标月 + 前 3 月）
+                var start = new Date(Date.UTC(year, month - 4, 1)).toISOString();
+                var end = new Date(Date.UTC(year, month, 1)).toISOString();
+                _guidanceFetchCollectionsRange(ids, start, end, function(err, data) {
+                  _guidanceHideLoading();
+                  if (err) { alert('查询失败: ' + err.message); return; }
+                  if (!data.collections || data.collections.length === 0) {
+                    alert('选中的客户在最近 4 个月没有采集数据');
+                    return;
+                  }
+                  renderGuidanceReport(customers, mode, year, month, data);
+                });
+              }
+            }
+
+            function _fmtMonth(y, m) { return y + '年' + m + '月'; }
+
+            // ============================================
+            // 报告渲染（横向 + 纵向）
+            // ============================================
+            function renderGuidanceReport(customers, mode, year, month, data) {
+              var body = document.getElementById('__guidance_body');
+              if (!body) return;
+              // 按 collection_id 索引 details
+              var detsByCol = {};
+              data.details.forEach(function(d) {
+                if (!detsByCol[d.collection_id]) detsByCol[d.collection_id] = [];
+                detsByCol[d.collection_id].push(d);
+              });
+              // 按 customer 索引 collection（每个客户取该月第一条）
+              var colsByCustomer = {};
+              data.collections.forEach(function(c) {
+                if (!colsByCustomer[c.customer_id]) colsByCustomer[c.customer_id] = c;
+              });
+              var html = '';
+              // Header
+              html += '<div style="background:linear-gradient(135deg,#1989fa,#0e6fcc);color:#fff;padding:14px 16px;display:flex;align-items:center;justify-content:center;position:relative;box-shadow:0 2px 6px rgba(0,0,0,0.15)">';
+              html += '<button id="__gd_back3" style="position:absolute;left:16px;background:rgba(255,255,255,0.2);color:#fff;border:none;border-radius:50%;width:32px;height:32px;font-size:16px;cursor:pointer">←</button>';
+              html += '<div style="font-size:17px;font-weight:600">📊 经营指导书</div>';
+              html += '</div>';
+              html += '<div style="background:#fff;padding:10px 16px;border-bottom:1px solid #eee;font-size:12px;color:#666">';
+              html += '<div>客户数: <strong>' + customers.length + '</strong> · 月份: <strong>' + _fmtMonth(year, month) + '</strong></div>';
+              html += '<div>模式: <strong>' + (mode === 'horizontal' ? '客户横向对比' : '时间纵向对比') + '</strong></div>';
+              html += '</div>';
+              if (mode === 'horizontal') {
+                html += renderHorizontalReport(customers, colsByCustomer, detsByCol);
+              } else {
+                html += renderVerticalReport(customers, data.collections, detsByCol, year, month);
+              }
+              html += '<div style="padding:16px;text-align:center;color:#999;font-size:12px">📱 截图分享：本页可截屏转发给客户经理</div>';
+              body.innerHTML = html;
+              document.getElementById('__gd_back3').onclick = function() {
+                renderGuidanceStep2();
+              };
+            }
+
+            function renderHorizontalReport(customers, colsByCustomer, detsByCol) {
+              // 收集所有有数据的规格（按 sales_qty 汇总）
+              var specAgg = {};  // spec_name -> { sales, count, brands:{} }
+              var custSales = {};  // customer_id -> total sales
+              var custSpecCount = {}; // 客户 -> 规格数
+              var activeCount = 0;
+              customers.forEach(function(c) {
+                var col = colsByCustomer[c.id];
+                if (!col) return;
+                var dets = detsByCol[col.id] || [];
+                if (dets.length === 0) return;
+                activeCount++;
+                custSales[c.id] = 0;
+                custSpecCount[c.id] = new Set();
+                dets.forEach(function(d) {
+                  var n = d.cigar_name || ('规格' + d.cigar_spec_id);
+                  var s = Number(d.sales_qty || 0);
+                  if (!specAgg[n]) specAgg[n] = { name: n, sales: 0, customers: {}, brand: d.cigar_brand||'' };
+                  specAgg[n].sales += s;
+                  specAgg[n].customers[c.id] = (specAgg[n].customers[c.id]||0) + s;
+                  custSales[c.id] += s;
+                  custSpecCount[c.id].add(n);
+                });
+              });
+              var specs = Object.values(specAgg).sort(function(a,b) { return b.sales - a.sales; });
+              var totalSales = specs.reduce(function(s,x) { return s + x.sales; }, 0);
+              var html = '';
+              html += '<div style="padding:14px 16px;background:#e8f5ff;border-bottom:1px solid #cce4ff">';
+              html += '<div style="font-size:14px;color:#0e6fcc;font-weight:600">📊 横向对比报告</div>';
+              html += '<div style="font-size:12px;color:#555;margin-top:4px">本月度共采集 ' + activeCount + ' 家客户，' + specs.length + ' 个规格，总销量 ' + totalSales + ' 盒</div>';
+              html += '</div>';
+              if (specs.length === 0) {
+                html += '<div style="padding:30px;text-align:center;color:#999">该月客户没有采集到规格数据</div>';
+                return html;
+              }
+              // 集中度分析
+              var top5Sales = specs.slice(0, 5).reduce(function(s,x) { return s + x.sales; }, 0);
+              var top10Sales = specs.slice(0, 10).reduce(function(s,x) { return s + x.sales; }, 0);
+              var top5Pct = totalSales > 0 ? (top5Sales / totalSales * 100) : 0;
+              var top10Pct = totalSales > 0 ? (top10Sales / totalSales * 100) : 0;
+              html += '<div style="background:#fff;padding:14px 16px;margin-top:10px;margin-left:10px;margin-right:10px;border-radius:8px;border:1px solid #eee">';
+              html += '<div style="font-size:14px;font-weight:600;margin-bottom:10px">📈 集中度分析</div>';
+              html += '<div style="display:flex;gap:10px;margin-bottom:10px">';
+              html += '<div style="flex:1;background:#fff8e1;padding:10px;border-radius:6px;border:1px solid #ffe082"><div style="font-size:11px;color:#888">Top5 占比</div><div style="font-size:20px;color:#e65100;font-weight:700">' + top5Pct.toFixed(1) + '%</div></div>';
+              html += '<div style="flex:1;background:#e8f5e9;padding:10px;border-radius:6px;border:1px solid #a5d6a7"><div style="font-size:11px;color:#888">Top10 占比</div><div style="font-size:20px;color:#2e7d32;font-weight:700">' + top10Pct.toFixed(1) + '%</div></div>';
+              html += '</div>';
+              var concentrationHint = '';
+              if (top10Pct >= 70) concentrationHint = '🔥 高度集中：销量主要集中在少数规格，建议重点维护头部产品。';
+              else if (top10Pct >= 50) concentrationHint = '⚖️ 中度集中：销量分布较为合理，Top10 是核心。';
+              else concentrationHint = '🌐 分散度高：销量分布广泛，无明显头部产品，建议关注长尾品类。';
+              html += '<div style="font-size:12px;color:#555;line-height:1.5;padding:8px;background:#fafafa;border-radius:4px">' + concentrationHint + '</div>';
+              html += '</div>';
+              // 规格 Top 20 表格
+              html += '<div style="background:#fff;padding:14px 16px;margin:10px;border-radius:8px;border:1px solid #eee">';
+              html += '<div style="font-size:14px;font-weight:600;margin-bottom:10px">🏆 规格销量排名 (Top 20)</div>';
+              html += '<div style="overflow-x:auto">';
+              html += '<table style="width:100%;border-collapse:collapse;font-size:12px;min-width:480px">';
+              html += '<thead><tr style="background:#f5f6fa;color:#666"><th style="padding:6px;text-align:left">#</th><th style="padding:6px;text-align:left">规格</th><th style="padding:6px;text-align:right">销量</th><th style="padding:6px;text-align:right">占比</th><th style="padding:6px;text-align:right">涉及客户</th></tr></thead><tbody>';
+              for (var i = 0; i < Math.min(20, specs.length); i++) {
+                var s = specs[i];
+                var pct = totalSales > 0 ? (s.sales / totalSales * 100) : 0;
+                var custCount = Object.keys(s.customers).length;
+                html += '<tr style="border-bottom:1px solid #f0f0f0"><td style="padding:6px;color:#888">' + (i+1) + '</td><td style="padding:6px;font-weight:500">' + s.name + '</td><td style="padding:6px;text-align:right;color:#1989fa;font-weight:600">' + s.sales + '</td><td style="padding:6px;text-align:right;color:#e65100">' + pct.toFixed(1) + '%</td><td style="padding:6px;text-align:right;color:#888">' + custCount + ' 家</td></tr>';
+              }
+              html += '</tbody></table></div></div>';
+              // 客户对比表
+              html += '<div style="background:#fff;padding:14px 16px;margin:10px;border-radius:8px;border:1px solid #eee">';
+              html += '<div style="font-size:14px;font-weight:600;margin-bottom:10px">👥 客户销售对比</div>';
+              html += '<div style="overflow-x:auto">';
+              html += '<table style="width:100%;border-collapse:collapse;font-size:11px;min-width:400px">';
+              html += '<thead><tr style="background:#f5f6fa;color:#666"><th style="padding:5px;text-align:left">客户</th><th style="padding:5px;text-align:right">总销量</th><th style="padding:5px;text-align:right">规格数</th><th style="padding:5px;text-align:left">TOP3 规格</th></tr></thead><tbody>';
+              customers.forEach(function(c) {
+                var col = colsByCustomer[c.id];
+                if (!col) {
+                  html += '<tr style="border-bottom:1px solid #f0f0f0;background:#fafafa"><td style="padding:5px;color:#888">' + c.name + '</td><td style="padding:5px;text-align:right;color:#bbb" colspan="3">无数据</td></tr>';
+                  return;
+                }
+                var dets = detsByCol[col.id] || [];
+                var custSpecs = dets.slice().sort(function(a,b) { return (b.sales_qty||0) - (a.sales_qty||0); });
+                var top3Names = custSpecs.slice(0, 3).map(function(x) { return x.cigar_name||''; }).filter(Boolean).join('、') || '-';
+                html += '<tr style="border-bottom:1px solid #f0f0f0"><td style="padding:5px"><div style="font-weight:500">' + c.name + '</div><div style="font-size:10px;color:#999">' + (c.manager||'') + '</div></td><td style="padding:5px;text-align:right;color:#1989fa;font-weight:600">' + (custSales[c.id]||0) + '</td><td style="padding:5px;text-align:right">' + (custSpecCount[c.id] ? custSpecCount[c.id].size : 0) + '</td><td style="padding:5px;color:#555;font-size:10px">' + top3Names + '</td></tr>';
+              });
+              html += '</tbody></table></div></div>';
+              // 订购建议
+              html += '<div style="background:linear-gradient(135deg,#fff8e1,#ffecb3);padding:14px 16px;margin:10px;border-radius:8px;border:1px solid #ffe082">';
+              html += '<div style="font-size:14px;font-weight:600;margin-bottom:8px;color:#bf360c">💡 订购建议</div>';
+              html += '<div style="font-size:12px;color:#5d4037;line-height:1.7">';
+              if (specs.length > 0) {
+                var top3 = specs.slice(0, 3).map(function(s) { return s.name + ' (' + s.sales + ' 盒)'; }).join('、');
+                html += '<div>• <strong>头部规格</strong>：' + top3 + '，建议优先保障库存。</div>';
+              }
+              if (activeCount < customers.length) {
+                var missingNames = customers.filter(function(c) { return !colsByCustomer[c.id]; }).map(function(c) { return c.name; }).slice(0, 3).join('、');
+                html += '<div>• <strong>未采集客户</strong>：' + missingNames + (customers.length - activeCount > 3 ? ' 等' : '') + '，建议优先安排采集。</div>';
+              }
+              if (top10Pct >= 70) {
+                html += '<div>• <strong>风险提示</strong>：Top10 占比 ' + top10Pct.toFixed(1) + '%，集中度过高，建议适当引入新规格分散风险。</div>';
+              }
+              html += '</div></div>';
+              return html;
+            }
+
+            function renderVerticalReport(customers, allCollections, detsByCol, year, month) {
+              // 收集每个客户在最近 4 个月的数据
+              var byMonthCust = {};  // "YYYY-MM|cust_id" -> { sales, count, specs:{} }
+              allCollections.forEach(function(col) {
+                var d = new Date(col.collected_at);
+                var y = d.getUTCFullYear(), m = d.getUTCMonth() + 1;
+                var key = y + '-' + m + '|' + col.customer_id;
+                if (!byMonthCust[key]) byMonthCust[key] = { year: y, month: m, customerId: col.customer_id, salesQty: 0, collection: col, specSet: new Set() };
+                var dets = detsByCol[col.id] || [];
+                dets.forEach(function(det) {
+                  byMonthCust[key].salesQty += Number(det.sales_qty || 0);
+                  byMonthCust[key].specSet.add(det.cigar_name || ('规格' + det.cigar_spec_id));
+                });
+              });
+              var html = '';
+              html += '<div style="padding:14px 16px;background:#fff8e1;border-bottom:1px solid #ffe082">';
+              html += '<div style="font-size:14px;color:#bf360c;font-weight:600">📈 纵向对比报告</div>';
+              html += '<div style="font-size:12px;color:#5d4037;margin-top:4px">对比 ' + (year-1) + '年' + month + '月 至 ' + year + '年' + month + '月 (近4个月) 的库存变动</div>';
+              html += '</div>';
+              var anyData = false;
+              customers.forEach(function(c) {
+                var months = [];
+                for (var off = 3; off >= 0; off--) {
+                  var dt = new Date(Date.UTC(year, month - 1 - off, 1));
+                  var y = dt.getUTCFullYear(), m = dt.getUTCMonth() + 1;
+                  var key = y + '-' + m + '|' + c.id;
+                  months.push({ year: y, month: m, data: byMonthCust[key] });
+                }
+                var hasAny = months.some(function(md) { return md.data; });
+                if (!hasAny) {
+                  html += '<div style="background:#fafafa;padding:14px 16px;margin:10px;border-radius:8px;border:1px solid #eee;opacity:0.6"><div style="font-size:13px;font-weight:600;color:#888">' + c.name + '</div><div style="font-size:11px;color:#aaa">近 4 个月无采集数据</div></div>';
+                  return;
+                }
+                anyData = true;
+                html += '<div style="background:#fff;padding:14px 16px;margin:10px;border-radius:8px;border:1px solid #eee">';
+                html += '<div style="font-size:14px;font-weight:600;margin-bottom:4px">' + c.name + '</div>';
+                html += '<div style="font-size:11px;color:#999;margin-bottom:10px">' + c.code + ' · 经理:' + (c.manager||'-') + ' · ' + (c.store_type||'-') + '</div>';
+                html += '<div style="overflow-x:auto">';
+                html += '<table style="width:100%;border-collapse:collapse;font-size:11px;min-width:380px">';
+                html += '<thead><tr style="background:#f5f6fa;color:#666"><th style="padding:6px;text-align:left">月份</th><th style="padding:6px;text-align:right">销量</th><th style="padding:6px;text-align:right">规格数</th><th style="padding:6px;text-align:left">环比</th></tr></thead><tbody>';
+                var prevSales = null;
+                months.forEach(function(md, idx) {
+                  var has = !!md.data;
+                  var sales = has ? md.data.salesQty : 0;
+                  var specCount = has ? md.data.specSet.size : 0;
+                  var label = _fmtMonth(md.year, md.month);
+                  var trend = '';
+                  if (prevSales !== null && idx > 0) {
+                    if (sales > prevSales) trend = '<span style="color:#2e7d32">↑ ' + (sales - prevSales) + '</span>';
+                    else if (sales < prevSales) trend = '<span style="color:#c62828">↓ ' + (prevSales - sales) + '</span>';
+                    else trend = '<span style="color:#999">— 持平</span>';
+                  }
+                  html += '<tr style="border-bottom:1px solid #f0f0f0;' + (idx === months.length - 1 ? 'background:#fff8e1;' : '') + '">';
+                  html += '<td style="padding:6px;font-weight:' + (idx === months.length - 1 ? '600' : '400') + '">' + label + (idx === months.length - 1 ? ' (目标)' : '') + '</td>';
+                  html += '<td style="padding:6px;text-align:right;color:' + (has ? '#1989fa' : '#ccc') + ';font-weight:600">' + sales + '</td>';
+                  html += '<td style="padding:6px;text-align:right">' + (has ? specCount : '-') + '</td>';
+                  html += '<td style="padding:6px">' + trend + '</td>';
+                  html += '</tr>';
+                  prevSales = sales;
+                });
+                html += '</tbody></table></div>';
+                // 月度建议
+                var lastMonth = months[months.length - 1];
+                var prevMonth = months[months.length - 2];
+                if (lastMonth.data && prevMonth && prevMonth.data) {
+                  var diff = lastMonth.data.salesQty - prevMonth.data.salesQty;
+                  var pct = prevMonth.data.salesQty > 0 ? (diff / prevMonth.data.salesQty * 100) : 0;
+                  var advice = '';
+                  if (pct >= 30) advice = '🚀 销售环比上涨 ' + pct.toFixed(1) + '%，表现强劲，建议适当加大库存';
+                  else if (pct >= 10) advice = '📈 销售环比上涨 ' + pct.toFixed(1) + '%，趋势良好';
+                  else if (pct > -10) advice = '⚖️ 销售基本持平，环比 ' + (pct >= 0 ? '+' : '') + pct.toFixed(1) + '%';
+                  else if (pct > -30) advice = '📉 销售环比下降 ' + Math.abs(pct).toFixed(1) + '%，需关注库存周转';
+                  else advice = '⚠️ 销售环比下降 ' + Math.abs(pct).toFixed(1) + '%，建议分析原因并调整';
+                  html += '<div style="margin-top:10px;padding:8px 12px;background:#fafafa;border-left:3px solid #1989fa;border-radius:4px;font-size:12px;color:#333">' + advice + '</div>';
+                } else if (!lastMonth.data) {
+                  html += '<div style="margin-top:10px;padding:8px 12px;background:#fff8e1;border-left:3px solid #ffca28;border-radius:4px;font-size:12px;color:#5d4037">⚠️ 目标月份未采集，建议尽快安排采集以完成本月任务</div>';
+                }
+                html += '</div>';
+              });
+              if (!anyData) {
+                html += '<div style="padding:30px;text-align:center;color:#999">所有选中客户在近 4 个月均无采集数据</div>';
+              }
+              return html;
+            }
+
           } catch (e) {
             debugLog('Page render error: ' + e.message, true);
           }
