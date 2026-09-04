@@ -3,23 +3,13 @@
   // 攻防演练模式：通过 ?drill=1 启用
   // - 清空 localStorage 中的登录凭证
   // - 所有 _sbApi / XHR 请求直接返回 503
-  // - 屏幕顶部红色横幅提示"演练进行中"
   // ============================================
   window.__drillMode = /[?&]drill=1(&|$)/.test(window.location.search);
   if (window.__drillMode) {
     try {
       localStorage.removeItem('cigar:token');
       localStorage.removeItem('cigar:user');
-      localStorage.removeItem('cigar:submission:' + (location.pathname||''));
     } catch(e) {}
-    // 立即挂上红色横幅（在任何 DOM ready 之前）
-    var __drillBanner = document.createElement('div');
-    __drillBanner.style.cssText = 'position:fixed;top:0;left:0;right:0;background:#c62828;color:#fff;text-align:center;padding:8px;font-size:13px;font-weight:600;z-index:999999;box-shadow:0 2px 6px rgba(0,0,0,0.3);font-family:sans-serif';
-    __drillBanner.textContent = '🛡️ 攻防演练进行中 — 所有 Supabase 请求被拦截（503）';
-    document.addEventListener('DOMContentLoaded', function() {
-      if (document.body) document.body.appendChild(__drillBanner);
-    });
-    if (document.body) document.body.appendChild(__drillBanner);
   }
 
   window.__setSupabase = function(url, key) {
@@ -67,10 +57,10 @@
     debugLog(msg, true);
   }, true);
 
-  debugLog('Shim v34 starting (script-tag injection)...');
+  debugLog('Shim v35 starting (script-tag injection)...');
 
   // ───── App 版本 & 更新配置 ─────
-  window.__appVersion = { code: 131, name: '1.3.1' };
+  window.__appVersion = { code: 132, name: '1.3.2' };
   window.__appDisplay = '鹭茄记 V' + window.__appVersion.name;
   window.__updateUrl = (function(){
     try { return localStorage.getItem('cigar:update_url') || 'https://raw.githubusercontent.com/yashiro-bot/-app/main/version.json'; } catch(e) { return ''; }
