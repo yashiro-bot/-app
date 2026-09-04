@@ -1,4 +1,27 @@
 (function() {
+  // ============================================
+  // 攻防演练模式：通过 ?drill=1 启用
+  // - 清空 localStorage 中的登录凭证
+  // - 所有 _sbApi / XHR 请求直接返回 503
+  // - 屏幕顶部红色横幅提示"演练进行中"
+  // ============================================
+  window.__drillMode = /[?&]drill=1(&|$)/.test(window.location.search);
+  if (window.__drillMode) {
+    try {
+      localStorage.removeItem('cigar:token');
+      localStorage.removeItem('cigar:user');
+      localStorage.removeItem('cigar:submission:' + (location.pathname||''));
+    } catch(e) {}
+    // 立即挂上红色横幅（在任何 DOM ready 之前）
+    var __drillBanner = document.createElement('div');
+    __drillBanner.style.cssText = 'position:fixed;top:0;left:0;right:0;background:#c62828;color:#fff;text-align:center;padding:8px;font-size:13px;font-weight:600;z-index:999999;box-shadow:0 2px 6px rgba(0,0,0,0.3);font-family:sans-serif';
+    __drillBanner.textContent = '🛡️ 攻防演练进行中 — 所有 Supabase 请求被拦截（503）';
+    document.addEventListener('DOMContentLoaded', function() {
+      if (document.body) document.body.appendChild(__drillBanner);
+    });
+    if (document.body) document.body.appendChild(__drillBanner);
+  }
+
   window.__setSupabase = function(url, key) {
     try { localStorage.setItem('sb_url', url); localStorage.setItem('sb_key', key); } catch(e) {}
     debugLog('Supabase configured: ' + (url ? 'yes' : 'no'));
@@ -44,10 +67,10 @@
     debugLog(msg, true);
   }, true);
 
-  debugLog('Shim v33 starting (script-tag injection)...');
+  debugLog('Shim v34 starting (script-tag injection)...');
 
   // ───── App 版本 & 更新配置 ─────
-  window.__appVersion = { code: 130, name: '1.3.0' };
+  window.__appVersion = { code: 131, name: '1.3.1' };
   window.__appDisplay = '鹭茄记 V' + window.__appVersion.name;
   window.__updateUrl = (function(){
     try { return localStorage.getItem('cigar:update_url') || 'https://raw.githubusercontent.com/yashiro-bot/-app/main/version.json'; } catch(e) { return ''; }
@@ -762,6 +785,11 @@ var SUPABASE_URL = (function(){try{return localStorage.getItem('sb_url')||'https
 var SUPABASE_ANON_KEY = (function(){try{return localStorage.getItem('sb_key')||'sb_publishable_NXtaMiM_DLzyn6mEUOfM4Q_ifa7hw0W';}catch(e){return 'sb_publishable_NXtaMiM_DLzyn6mEUOfM4Q_ifa7hw0W';}})();
 
           function _sbApi(method, table, body, params, callback) {
+            // 攻防演练模式：所有 _sbApi 调用直接返回 503（无需真正发请求）
+            if (window.__drillMode === true) {
+              setTimeout(function() { if (callback) callback(503, '{"error":"drill_mode","message":"Supabase paused for security drill"}'); }, 50);
+              return;
+            }
             if (!SUPABASE_URL || !SUPABASE_ANON_KEY) { if (callback) callback(0, ''); return; }
             try {
               var url = SUPABASE_URL + '/rest/v1/' + table;
@@ -1126,6 +1154,13 @@ var SUPABASE_ANON_KEY = (function(){try{return localStorage.getItem('sb_key')||'
           };
 
           XMLHttpRequest.prototype.open = function(method, url) {
+            // 攻防演练模式：所有请求直接返回 503（服务端不可用模拟）
+            if (window.__drillMode === true) {
+              this.__drillMode = true;
+              this.__method = method;
+              this.__url = url || '';
+              return _origXhrOpen.call(this, method, url);
+            }
             this.__method = method;
             this.__url = url || '';
             this.__isMocked = false;
@@ -1166,6 +1201,23 @@ var SUPABASE_ANON_KEY = (function(){try{return localStorage.getItem('sb_key')||'
           }
 
           XMLHttpRequest.prototype.send = function(body) {
+            // 攻防演练模式：所有请求（包括 mock 的 login/collections）都直接返回 503
+            if (this.__drillMode) {
+              var self = this;
+              Object.defineProperty(self, 'readyState', { value: 4, configurable: true });
+              Object.defineProperty(self, 'status', { value: 503, configurable: true });
+              Object.defineProperty(self, 'statusText', { value: 'Service Unavailable (Drill Mode)', configurable: true });
+              Object.defineProperty(self, 'responseText', { value: '{"error":"drill_mode","message":"Supabase paused for security drill"}', configurable: true });
+              Object.defineProperty(self, 'response', { value: '{"error":"drill_mode","message":"Supabase paused for security drill"}', configurable: true });
+              setTimeout(function() {
+                ['onreadystatechange','onload','onloadend','onerror','onabort','ontimeout'].forEach(function(ev) {
+                  if (typeof self[ev] === 'function') {
+                    try { self[ev]({ target: self, type: ev }); } catch(e) {}
+                  }
+                });
+              }, 50);
+              return;
+            }
             if (this.__isMocked) {
               var self = this;
               debugLog('XHR mock: ' + self.__method + ' ' + self.__url);
